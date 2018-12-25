@@ -1,5 +1,5 @@
 #define USE_XTENSOR
-#include "nlos_loader.h"
+#include "nlos_loader.hpp"
 #include <chrono>
 #include <math.h>
 #include <xtensor/xtensor.hpp>
@@ -137,7 +137,7 @@ xt::xarray<float> backproject(
         volume(x, y, z) = radiance_sum;
     }
     }
-    if (omp_get_thread_num() == 0){
+    if (omp_get_thread_num() == 0) {
         uint nthreads = omp_get_num_threads();
         uint slices_done = (++iters)*nthreads;
         slices_done = slices_done > voxels_per_side ? voxels_per_side : slices_done;
@@ -154,7 +154,7 @@ int main(int argc, const char *argv[])
         std::cout << "Usage:\n\tbackprojector dataset_file [-b highest_bounce]\n";
         return 1;
     }
-    int highest_bounce = 1;
+    int highest_bounce = 3;
     std::string filename(argv[1]);
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-b") == 0) {
@@ -162,11 +162,11 @@ int main(int argc, const char *argv[])
         }
     }
 
-    std::vector<int> bounces(highest_bounce);
-    for (int i = 1; i <= highest_bounce; i++) bounces[i] = i;
-    std::cout << "Loading up to the " << highest_bounce+2 << " bounce" << std::endl;
+    std::vector<uint> bounces(0, highest_bounce - 2);
+    for (int i = 3; i <= highest_bounce; i++) bounces.push_back(i);
+    std::cout << "Loading up to the " << highest_bounce << " bounce" << std::endl;
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    NLOSData data(filename, {1});
+    NLOSData data(filename, bounces);
     std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
     std::cout << "Complete scene was read in " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "ms" << std::endl;
 
@@ -178,7 +178,6 @@ int main(int argc, const char *argv[])
     float deltaT = data.deltat[0];
     float t0 = data.t0[0];
     xt::xarray<float> transient_data = xt::view(data.data, 0, xt::all());
-    
     auto volume = backproject(transient_data,
                               data.camera_grid_positions,
                               data.laser_grid_positions,
@@ -186,6 +185,8 @@ int main(int argc, const char *argv[])
                               data.laser_position,
                               t0, deltaT, is_confocal,
                               data.hidden_volume_position,
-                              data.hidden_volume_size[0]*2, 32);
-    xt::dump_npy("test.npy", volume);
+                              data.hidden_volume_size[0]*2, 24);
+    xt::dump_npy("testOC.npy", volume);
 }
+
+// 3.4 minutes, no overclock
