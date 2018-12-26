@@ -15,7 +15,6 @@
 #include <xtensor/xview.hpp>
 #include <xtensor/xmath.hpp>
 #include <xtensor/xbuilder.hpp>
-#include <xtensor-io/xhighfive.hpp>
 
 int main() 
 {

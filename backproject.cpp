@@ -1,9 +1,10 @@
 #define USE_XTENSOR
+
 #include "nlos_loader.hpp"
 #include <chrono>
 #include <math.h>
 #include <xtensor/xtensor.hpp>
-#include <xtensor/xnpy.hpp>
+#include <xtensor-io/xhighfive.hpp>
 #include <omp.h>
 #include <chrono>
 
@@ -67,6 +68,7 @@ xt::xarray<float> backproject(
     xt::xarray<float> laser_wall_distances = xt::zeros<float>({camera_grid_points[0], camera_grid_points[1]});
 
     // Calculate camera-wall distances
+    #pragma omp parallel for
     for (uint cx = 0; cx < camera_grid_points[0]; cx++)
     {
         for (uint cy = 0; cy < camera_grid_points[1]; cy++)
@@ -83,6 +85,7 @@ xt::xarray<float> backproject(
     if (!is_confocal)
     {
         // Calculate laser-wall distances
+        #pragma omp parallel for
         for (uint lx = 0; lx < camera_grid_points[0]; lx++)
         {
             for (uint ly = 0; ly < camera_grid_points[1]; ly++)
@@ -155,10 +158,14 @@ int main(int argc, const char *argv[])
         return 1;
     }
     int highest_bounce = 3;
+    int voxel_resolution = 32;
     std::string filename(argv[1]);
     for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "-b") == 0) {
+        if (strcmp(argv[i], "-b") == 0 && i+1 < argc) {
             highest_bounce = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i], "-v") == 0 && i+1 < argc) {
+            voxel_resolution = atoi(argv[i+1]);
         }
     }
 
@@ -185,8 +192,10 @@ int main(int argc, const char *argv[])
                               data.laser_position,
                               t0, deltaT, is_confocal,
                               data.hidden_volume_position,
-                              data.hidden_volume_size[0]*2, 24);
-    xt::dump_npy("testOC.npy", volume);
+                              data.hidden_volume_size[0]*2, voxel_resolution);
+    char outfile[256] = {};
+    sprintf(outfile, "test_%d.hdf5", voxel_resolution);
+    xt::dump_hdf5(outfile, "/voxel_volume", volume);
 }
 
 // 3.4 minutes, no overclock
