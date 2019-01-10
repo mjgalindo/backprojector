@@ -13,3 +13,6 @@ find_package(HDF5 REQUIRED COMPONENTS CXX)
 include_directories(${HDF5_INCLUDE_DIRS})
 find_package(OpenMP REQUIRED)
 target_link_libraries(backprojector ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX)
+
+install(TARGETS backprojector DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+install(FILES backproject.hpp DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
