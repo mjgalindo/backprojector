@@ -7,7 +7,7 @@ using namespace bp;
 int main(int argc, const char *argv[])
 {
     if (argc < 2) {
-        std::cout << "Usage:\n\tbackprojector dataset_file [-b highest_bounce]\n";
+        std::cout << "Usage:\n\tbackprojector dataset_file [-b highest_bounce, -res volume resolution]\n";
         return 1;
     }
     int highest_bounce = 3;
@@ -17,7 +17,7 @@ int main(int argc, const char *argv[])
         if (strcmp(argv[i], "-b") == 0 && i+1 < argc) {
             highest_bounce = atoi(argv[i+1]);
         }
-        else if (strcmp(argv[i], "-v") == 0 && i+1 < argc) {
+        else if (strcmp(argv[i], "-res") == 0 && i+1 < argc) {
             voxel_resolution = atoi(argv[i+1]);
         }
     }
@@ -30,9 +30,10 @@ int main(int argc, const char *argv[])
     std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
     std::cout << "Complete scene was read in " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "ms" << std::endl;
 
-    for (const auto d : data.data.shape()){
+    for (const auto d : data.data.shape()) {
         std::cout << d << ' ';
     }
+
     std::cout << std::endl;
     bool is_confocal = data.is_confocal[0];
     float deltaT = data.deltat[0];
@@ -49,4 +50,5 @@ int main(int argc, const char *argv[])
     char outfile[256] = {};
     sprintf(outfile, "test_%d.hdf5", voxel_resolution);
     xt::dump_hdf5(outfile, "/voxel_volume", volume, xt::file_mode::overwrite);
+    return 0;
 }
