@@ -1,18 +1,21 @@
-project(dsreader)
-
 cmake_minimum_required(VERSION 3.11)
+
+project(backprojector LANGUAGES CXX CUDA)
 
 set (CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -Wall -g")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O3 -march=native -ftree-vectorize")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O3 -march=native")
 
 add_executable(backprojector main.cpp)
+add_library(cudabp STATIC backproject_cuda.cu)
+set_target_properties(cudabp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+target_compile_features(cudabp PUBLIC cxx_std_14)
 
+find_package(OpenMP REQUIRED)
 add_definitions(-DXTENSOR_ENABLE_XSIMD)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 include_directories(${HDF5_INCLUDE_DIRS})
-find_package(OpenMP REQUIRED)
-target_link_libraries(backprojector ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX)
+target_link_libraries(backprojector PRIVATE ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX cudabp)
 
 install(TARGETS backprojector DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(FILES backproject.hpp DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
