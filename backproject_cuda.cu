@@ -1,11 +1,14 @@
 
 #include <chrono>
 #include <math.h>
+#include <helper_cuda.h>
 
 #include "backproject_cuda.hpp"
 
 namespace bp_cuda
 {
+    const uint MAX_THREADS_PER_BLOCK = 4;
+
     __device__
     float distance(float *p1, float *p2) 
     {
@@ -35,24 +38,35 @@ namespace bp_cuda
                              uint *voxels_per_side,
                              bool *is_confocal)
     {
-        float radiance_sum = 0.0;
         uint voxel_id = blockIdx.x * *voxels_per_side * *voxels_per_side + blockIdx.y * *voxels_per_side + blockIdx.z;
-        
+        __shared__ float local_array[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK]; 
+        __shared__ uint iterations[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK]; 
+        float& radiance_sum = local_array[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y];
+        uint& its = iterations[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y];
+        // Ensure it's 0 initialized
+        radiance_sum = 0.0;
         float *voxel_position = &voxel_positions[voxel_id*3];
-
-        for (uint cx = 0; cx < camera_grid_points[0]; cx++)
+        its = 0;
+        for (uint cxi = 0; cxi < camera_grid_points[0] / MAX_THREADS_PER_BLOCK; cxi++)
         {
-        for (uint cy = 0; cy < camera_grid_points[1]; cy++)
+        uint cx = cxi * camera_grid_points[0] / MAX_THREADS_PER_BLOCK + threadIdx.x;
+        //printf("CX: %d, CXi: %d, Tx: %d Ty: %d, Its: %d \ncxi %d, cgp: %d, mtpb: %d, tx: %d\n", cx, cxi, threadIdx.x, threadIdx.y, its, cxi, camera_grid_points[0], MAX_THREADS_PER_BLOCK, threadIdx.x);
+        //printf("cxi %d, cgp: %d, mtpb: %d, tx: %d\n", cxi, camera_grid_points[0], MAX_THREADS_PER_BLOCK, threadIdx.x);
+        for (uint cyi = 0; cyi < camera_grid_points[1] / MAX_THREADS_PER_BLOCK; cyi++)
         {
+            uint cy = cyi * camera_grid_points[1] / MAX_THREADS_PER_BLOCK + threadIdx.y;
+            //printf("CX: %d, CY: %d CXi: %d, CYi: %d  Tx: %d Ty: %d, Its: %d \n", cx, cy, cxi, cyi, threadIdx.x, threadIdx.y, its);
             float *camera_wall_point = &camera_grid_positions[(cx*camera_grid_points[1] + cy)*3];
             float camera_wall_distance = distance(camera_pos, camera_wall_point);
             float voxel_camera_point_distance = distance(camera_wall_point, voxel_position);
+            its++;
+
             if (!*is_confocal)
             {
                 for (uint lx = 0; lx < laser_grid_points[0]; lx++)
                 {
                 for (uint ly = 0; ly < laser_grid_points[1]; ly++)
-                {
+                {   
                     float *laser_wall_point = &laser_grid_positions[(lx*laser_grid_points[1] + ly)*3];
                     float laser_wall_distance = distance(laser_pos, laser_wall_point);
 
@@ -68,7 +82,7 @@ namespace bp_cuda
                             cx * laser_grid_points[1] * laser_grid_points[0] + ly * laser_grid_points[0] + lx];
                     }
                 }
-                }
+            }
             } else 
             {
                 float wall_voxel_wall_distance = voxel_camera_point_distance*2;
@@ -81,7 +95,19 @@ namespace bp_cuda
             }
         }
         }
-        voxel_volume[voxel_id] = radiance_sum;
+        __syncthreads();
+        float total_radiance = 0.0;
+        for (int i = 0; i < MAX_THREADS_PER_BLOCK*MAX_THREADS_PER_BLOCK; i++) {
+            //printf("LOCAL ARRAY B{%d %d %d} %d %.7f\n", blockIdx.x, blockIdx.y, blockIdx.z, i, local_array[i]);
+            total_radiance += local_array[i];
+        }
+        //printf("TOTAL B{%d %d %d} %.7f %.7f\n", blockIdx.x, blockIdx.y, blockIdx.z, radiance_sum, local_array[0]);
+        // All threads write the same value
+        //printf("%x\n", &voxel_volume[voxel_id] );
+        voxel_volume[voxel_id] = total_radiance;
+        //printf("B{%d %d %d} t{%d %d}: RS: %.7f  LA: %.7f %d\n", blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, radiance_sum, local_array[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y], its);
+
+        // __syncthreads();
     }
 
 
@@ -207,7 +233,8 @@ namespace bp_cuda
         cudaMemcpy(is_confocal_gpu, &is_confocal, sizeof(bool), cudaMemcpyHostToDevice);
         
         dim3 dimBlock(voxels_per_side, voxels_per_side, voxels_per_side);
-        cuda_backprojection<<<dimBlock, 1>>>(transient_data_gpu,
+        dim3 dimThreads(min(camera_grid_points[0], MAX_THREADS_PER_BLOCK), min(camera_grid_points[1], MAX_THREADS_PER_BLOCK));
+        cuda_backprojection<<<dimBlock, dimThreads>>>(transient_data_gpu,
                                              T_gpu,
                                              laser_grid_points_gpu,
                                              camera_grid_points_gpu,
@@ -221,7 +248,15 @@ namespace bp_cuda
                                              deltaT_gpu,
                                              voxels_per_side_gpu,
                                              is_confocal_gpu);
+        cudaDeviceSynchronize();
 
+        // check for error
+        cudaError_t error = cudaGetLastError();
+        if(error != cudaSuccess)
+        {
+        // print the CUDA error message and exit
+        printf("CUDA error: %s\n", cudaGetErrorString(error));
+        }
         cudaMemcpy(voxel_volume.data(), voxel_volume_gpu, nvoxels*sizeof(float), cudaMemcpyDeviceToHost);
         
         cudaFree(transient_data_gpu);

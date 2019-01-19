@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O3 -march=native")
 add_executable(backprojector main.cpp)
 add_library(cudabp SHARED backproject_cuda.cu)
 add_library(cudabp_static STATIC backproject_cuda.cu)
-
+include_directories(/opt/cuda/samples/common/inc)
 set_target_properties(cudabp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_compile_features(cudabp PUBLIC cxx_std_14)
 
