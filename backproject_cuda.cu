@@ -16,10 +16,9 @@ namespace bp_cuda
         for (int i = 0; i < 3; i++)
         {
             buff[i] = p1[i] - p2[i];
-            buff[i] = buff[i] * buff[i];
         }
 
-        return sqrt(buff[0]+buff[1]+buff[2]);
+        return norm3df(buff[0], buff[1], buff[2]);
     }
 
     __global__
@@ -39,27 +38,35 @@ namespace bp_cuda
                              bool *is_confocal)
     {
         uint voxel_id = blockIdx.x * *voxels_per_side * *voxels_per_side + blockIdx.y * *voxels_per_side + blockIdx.z;
-        __shared__ float local_array[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK]; 
-        __shared__ uint iterations[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK]; 
+        __shared__ float local_array[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK];
         float& radiance_sum = local_array[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y];
-        uint& its = iterations[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y];
-        // Ensure it's 0 initialized
         radiance_sum = 0.0;
         float *voxel_position = &voxel_positions[voxel_id*3];
-        its = 0;
-        for (uint cxi = 0; cxi < camera_grid_points[0] / MAX_THREADS_PER_BLOCK; cxi++)
+
+        uint cam_x_loops = camera_grid_points[0], cam_y_loops = camera_grid_points[1];
+        if (camera_grid_points[0] > MAX_THREADS_PER_BLOCK)
         {
-        uint cx = cxi * camera_grid_points[0] / MAX_THREADS_PER_BLOCK + threadIdx.x;
+            cam_x_loops = camera_grid_points[0] / MAX_THREADS_PER_BLOCK;
+        }
+        if (camera_grid_points[1] > MAX_THREADS_PER_BLOCK)
+        {
+            cam_y_loops = camera_grid_points[1] / MAX_THREADS_PER_BLOCK;
+        }
+
+        for (uint cxi = 0; cxi < cam_x_loops; cxi++)
+        {
+        uint cx = cxi * cam_x_loops + threadIdx.x;
+        if (cx > camera_grid_points[0]) continue;
         //printf("CX: %d, CXi: %d, Tx: %d Ty: %d, Its: %d \ncxi %d, cgp: %d, mtpb: %d, tx: %d\n", cx, cxi, threadIdx.x, threadIdx.y, its, cxi, camera_grid_points[0], MAX_THREADS_PER_BLOCK, threadIdx.x);
         //printf("cxi %d, cgp: %d, mtpb: %d, tx: %d\n", cxi, camera_grid_points[0], MAX_THREADS_PER_BLOCK, threadIdx.x);
-        for (uint cyi = 0; cyi < camera_grid_points[1] / MAX_THREADS_PER_BLOCK; cyi++)
+        for (uint cyi = 0; cyi < cam_y_loops; cyi++)
         {
-            uint cy = cyi * camera_grid_points[1] / MAX_THREADS_PER_BLOCK + threadIdx.y;
+            uint cy = cyi * cam_y_loops + threadIdx.y;
+            if (cy > camera_grid_points[0]) continue;
             //printf("CX: %d, CY: %d CXi: %d, CYi: %d  Tx: %d Ty: %d, Its: %d \n", cx, cy, cxi, cyi, threadIdx.x, threadIdx.y, its);
             float *camera_wall_point = &camera_grid_positions[(cx*camera_grid_points[1] + cy)*3];
             float camera_wall_distance = distance(camera_pos, camera_wall_point);
             float voxel_camera_point_distance = distance(camera_wall_point, voxel_position);
-            its++;
 
             if (!*is_confocal)
             {
