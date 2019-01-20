@@ -31,7 +31,8 @@ namespace bp_cuda
                              float *camera_pos,
                              float *laser_pos,
                              float *voxel_volume, 
-                             float *voxel_positions, 
+                             float *volume_zero_pos,
+                             float *voxel_inc,
                              float *t0, 
                              float *deltaT,
                              uint *voxels_per_side,
@@ -41,7 +42,10 @@ namespace bp_cuda
         __shared__ float local_array[MAX_THREADS_PER_BLOCK * MAX_THREADS_PER_BLOCK];
         float& radiance_sum = local_array[threadIdx.x*MAX_THREADS_PER_BLOCK + threadIdx.y];
         radiance_sum = 0.0;
-        float *voxel_position = &voxel_positions[voxel_id*3];
+
+        float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*blockIdx.x,
+                                  volume_zero_pos[1]+voxel_inc[1]*blockIdx.y, 
+                                  volume_zero_pos[2]+voxel_inc[2]*blockIdx.z};
 
         uint cam_x_loops = camera_grid_points[0], cam_y_loops = camera_grid_points[1];
         if (camera_grid_points[0] > MAX_THREADS_PER_BLOCK)
@@ -131,8 +135,6 @@ namespace bp_cuda
         float volume_size,
         uint voxels_per_side)
     {
-        float voxel_size = volume_size / (voxels_per_side - 1);
-
         xt::xtensor<float, 3> camera_grid_positions = dcamera_grid_positions;
         xt::xtensor<float, 3> laser_grid_positions = dlaser_grid_positions;
         
@@ -143,12 +145,7 @@ namespace bp_cuda
         if (laser_grid_positions.shape()[2] != 3) {
             laser_grid_positions = xt::transpose(laser_grid_positions, {2,1,0});
         }
-
-        auto get_point = [volume_position, volume_size, voxel_size](uint x, uint y, uint z) -> vector3 {
-            static auto zero_pos = volume_position - volume_size / 2;
-            return zero_pos + vector3{x * voxel_size, y * voxel_size, z * voxel_size};
-        };
-
+        
         std::array<uint, 2> camera_grid_points;
         std::array<uint, 2> laser_grid_points;
         {
@@ -169,13 +166,9 @@ namespace bp_cuda
             total_transient_size *= d;
         }
 
-        xt::xarray<float> voxel_volume = xt::zeros<float>({voxels_per_side, voxels_per_side, voxels_per_side});
-        xt::xarray<float> voxel_positions = xt::zeros<float>({voxels_per_side, voxels_per_side, voxels_per_side, 3u});
-
-        for (uint x = 0; x < voxels_per_side; x++)
-        for (uint y = 0; y < voxels_per_side; y++)
-        for (uint z = 0; z < voxels_per_side; z++)
-            xt::view(voxel_positions, x,y,z, xt::all()) = get_point(x,y,z);
+        vector3 volume_zero_pos = volume_position - volume_size / 2;
+        float voxel_size = volume_size / (voxels_per_side - 1);
+        vector3 voxel_inc{voxel_size, voxel_size, voxel_size};
 
         // Copy all the necessary information to the device
 
@@ -217,11 +210,15 @@ namespace bp_cuda
         float *voxel_volume_gpu;
         uint nvoxels = voxels_per_side*voxels_per_side*voxels_per_side;
         cudaMalloc((void**)&voxel_volume_gpu, nvoxels*sizeof(float));
-        cudaMemcpy(voxel_volume_gpu, voxel_volume.data(), nvoxels*sizeof(float), cudaMemcpyHostToDevice); 
-        /// float *voxel_positions, 
-        float *voxel_positions_gpu; 
-        cudaMalloc((void**)&voxel_positions_gpu, 3*nvoxels*sizeof(float));
-        cudaMemcpy(voxel_positions_gpu, voxel_positions.data(), 3*nvoxels*sizeof(float), cudaMemcpyHostToDevice); 
+        cudaMemset(voxel_volume_gpu, 0, nvoxels*sizeof(float)); 
+        /// float *volume_zero_pos, 
+        float *volume_zero_pos_gpu; 
+        cudaMalloc((void**)&volume_zero_pos_gpu, 3*sizeof(float));
+        cudaMemcpy(volume_zero_pos_gpu, volume_zero_pos.data(), 3*sizeof(float), cudaMemcpyHostToDevice); 
+        /// float *voxel_inc, 
+        float *voxel_inc_gpu; 
+        cudaMalloc((void**)&voxel_inc_gpu, 3*sizeof(float));
+        cudaMemcpy(voxel_inc_gpu, voxel_inc.data(), 3*sizeof(float), cudaMemcpyHostToDevice); 
         /// float *t0, 
         float *t0_gpu;
         cudaMalloc((void**)&t0_gpu, sizeof(uint));
@@ -242,28 +239,32 @@ namespace bp_cuda
         dim3 dimBlock(voxels_per_side, voxels_per_side, voxels_per_side);
         dim3 dimThreads(min(camera_grid_points[0], MAX_THREADS_PER_BLOCK), min(camera_grid_points[1], MAX_THREADS_PER_BLOCK));
         cuda_backprojection<<<dimBlock, dimThreads>>>(transient_data_gpu,
-                                             T_gpu,
-                                             laser_grid_points_gpu,
-                                             camera_grid_points_gpu,
-                                             camera_grid_positions_gpu,
-                                             laser_grid_positions_gpu,
-                                             camera_pos_gpu,
-                                             laser_pos_gpu,
-                                             voxel_volume_gpu,
-                                             voxel_positions_gpu,
-                                             t0_gpu,
-                                             deltaT_gpu,
-                                             voxels_per_side_gpu,
-                                             is_confocal_gpu);
+                                                    T_gpu,
+                                                    laser_grid_points_gpu,
+                                                    camera_grid_points_gpu,
+                                                    camera_grid_positions_gpu,
+                                                    laser_grid_positions_gpu,
+                                                    camera_pos_gpu,
+                                                    laser_pos_gpu,
+                                                    voxel_volume_gpu,
+                                                    volume_zero_pos_gpu,
+                                                    voxel_inc_gpu,
+                                                    t0_gpu,
+                                                    deltaT_gpu,
+                                                    voxels_per_side_gpu,
+                                                    is_confocal_gpu);
         cudaDeviceSynchronize();
 
         // check for error
         cudaError_t error = cudaGetLastError();
         if(error != cudaSuccess)
         {
-        // print the CUDA error message and exit
-        printf("CUDA error: %s\n", cudaGetErrorString(error));
+            // print the CUDA error message and exit
+            printf("CUDA error: %s\n", cudaGetErrorString(error));
         }
+
+        // Initialize voxel volume for the CPU
+        xt::xarray<float> voxel_volume = xt::zeros<float>({voxels_per_side, voxels_per_side, voxels_per_side});
         cudaMemcpy(voxel_volume.data(), voxel_volume_gpu, nvoxels*sizeof(float), cudaMemcpyDeviceToHost);
         
         cudaFree(transient_data_gpu);
@@ -275,7 +276,8 @@ namespace bp_cuda
         cudaFree(camera_pos_gpu);
         cudaFree(laser_pos_gpu);
         cudaFree(voxel_volume_gpu);
-        cudaFree(voxel_positions_gpu);
+        cudaFree(volume_zero_pos_gpu);
+        cudaFree(voxel_inc_gpu);
         cudaFree(t0_gpu);
         cudaFree(deltaT_gpu);
         cudaFree(voxels_per_side_gpu);
