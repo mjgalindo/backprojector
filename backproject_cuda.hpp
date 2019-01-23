@@ -12,7 +12,7 @@ namespace bp_cuda
 using vector3 = xt::xtensor_fixed<float, xt::xshape<3>>;
 
 xt::xarray<float> backproject(
-    const xt::xarray<float> &transient_data,
+    xt::xarray<float> &transient_data,
     const xt::xtensor<float, 3> &camera_grid_positions,
     const xt::xtensor<float, 3> &laser_grid_positions,
     vector3 camera_position,
