@@ -2,12 +2,14 @@ cmake_minimum_required(VERSION 3.11)
 
 project(backprojector LANGUAGES CXX CUDA)
 
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(xtensor REQUIRED)
+add_subdirectory(xtl)
+set(xtl_DIR xtl)
+add_subdirectory(xtensor)
 
 add_executable(backprojector main.cpp)
-target_compile_features(backprojector PUBLIC cxx_std_17)
+target_compile_features(backprojector PUBLIC cxx_std_11)
 target_compile_options(backprojector PRIVATE -Wall)
 add_library(cudabp SHARED backproject_cuda.cu)
 add_library(cudabp_static STATIC backproject_cuda.cu)
