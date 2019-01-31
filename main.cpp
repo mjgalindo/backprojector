@@ -2,6 +2,31 @@
 #include "backproject_cuda.hpp"
 #include "nlos_loader.hpp"
 
+#include "H5Cpp.h"
+
+using namespace H5;
+
+void save_volume(const std::string &output_file,
+                 const xt::xarray<float> &volume)
+{
+    H5File file(output_file, H5F_ACC_TRUNC);
+    auto shape = volume.shape();
+    std::vector<hsize_t> fdim = {shape[0], shape[1], shape[2]};
+    std::vector<hsize_t> start = {0, 0, 0};
+    std::vector<hsize_t> count = {shape[0], shape[1], shape[2]};
+    std::vector<hsize_t> chunks = {shape[0], shape[1], shape[2]};
+
+    float fillvalue = NAN;
+    DSetCreatPropList proplist;
+    proplist.setDeflate(4);
+    proplist.setFillValue(PredType::NATIVE_FLOAT, &fillvalue);
+    proplist.setChunk(chunks.size(), chunks.data());
+    
+    DataSpace fspace(fdim.size(), fdim.data());
+    DataSet dataset = file.createDataSet("voxelVolume", PredType::NATIVE_FLOAT, fspace, proplist);
+    dataset.write(volume.data(), PredType::NATIVE_FLOAT);
+}
+
 /// Example loading and showing some values from an NLOS dataset.
 int main(int argc, const char *argv[])
 {
@@ -68,7 +93,7 @@ int main(int argc, const char *argv[])
     }
     char outfile[256] = {};
     sprintf(outfile, "test_%d.hdf5", voxel_resolution);
-    xt::dump_hdf5(outfile, "/voxel_volume", volume, xt::file_mode::overwrite);
+    save_volume(std::string(outfile), volume);
     std::cout << "Backprojected to " << std::string(outfile) << std::endl;
     return 0;
 }

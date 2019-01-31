@@ -10,7 +10,6 @@
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xcontainer.hpp>
 #include <xtensor/xview.hpp>
-#include <xtensor-io/xhighfive.hpp>
 #include <omp.h>
 
 typedef unsigned int uint32_t;

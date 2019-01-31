@@ -20,8 +20,8 @@ target_compile_options(cudabp PRIVATE $<$<CONFIG:Debug>:-G> --compiler-options -
 target_compile_options(cudabp_static PRIVATE $<$<CONFIG:Debug>:-G> --compiler-options -Wall,-fopenmp)
 
 find_package(OpenMP REQUIRED)
-target_include_directories(cudabp PUBLIC ${xtensor_INCLUDE_DIRS})
-target_include_directories(cudabp_static PUBLIC ${xtensor_INCLUDE_DIRS})
+target_include_directories(cudabp PUBLIC ${xtensor_INCLUDE_DIRS} ${xtl_INCLUDE_DIRS})
+target_include_directories(cudabp_static PUBLIC ${xtensor_INCLUDE_DIRS} ${xtl_INCLUDE_DIRS})
 target_link_libraries(cudabp PUBLIC OpenMP::OpenMP_CXX)
 target_link_libraries(cudabp_static PUBLIC OpenMP::OpenMP_CXX)
 
