@@ -35,7 +35,7 @@ int main()
             total_elements *= fdim[i];
         }
         xt::xarray<float> buffer = xt::zeros<float>(fdim);
-        for (uint i = 0; i < total_elements; i++) 
+        for (uint32_t i = 0; i < total_elements; i++) 
         {
             buffer.data()[i] = (float) i;
         }
@@ -67,13 +67,13 @@ int main()
 
         fspace.selectHyperslab(H5S_SELECT_SET, counts.data(), begins.data());
 
-        for (uint i = 0; i < begins.size(); i++) std::cout << begins[i] << ' ';
+        for (uint32_t i = 0; i < begins.size(); i++) std::cout << begins[i] << ' ';
         std::cout << std::endl;
-        for (uint i = 0; i < counts.size(); i++) std::cout << counts[i] << ' ';
+        for (uint32_t i = 0; i < counts.size(); i++) std::cout << counts[i] << ' ';
         std::cout << std::endl;
         std::cout << std::endl;
 
-        for (uint i = 0; i < fdim.size(); i++) std::cout << fdim[i] << ' ';
+        for (uint32_t i = 0; i < fdim.size(); i++) std::cout << fdim[i] << ' ';
         std::cout << std::endl;
 
         // Defining the memory dataspace

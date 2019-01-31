@@ -22,6 +22,6 @@ xt::xarray<float> backproject(
     bool is_confocal,
     vector3 volume_position,
     float volume_size,
-    uint voxels_per_side);
+    uint32_t voxels_per_side);
 } // namespace bp_cuda
 #endif

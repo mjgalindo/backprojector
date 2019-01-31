@@ -20,17 +20,17 @@
 #else
 template <typename T>
 struct simple_tensor {
-    std::vector<uint> shape;
+    std::vector<uint32_t> shape;
     T *buff;
-    uint total_elements;
+    uint32_t total_elements;
     
     // Prints the nd-array
     void print() {
-        uint depth = 0;
+        uint32_t depth = 0;
         using std::cout;
-        uint dims = this->shape.size();
-        std::vector<uint> dim_ctrs(dims);
-        for (uint i = 0; i < this->total_elements; i++) {
+        uint32_t dims = this->shape.size();
+        std::vector<uint32_t> dim_ctrs(dims);
+        for (uint32_t i = 0; i < this->total_elements; i++) {
             for (int dc = dims-1; dc >= 0; dc--) {
                 if (dim_ctrs[dc] == this->shape[dc]) {
                     cout << "}";
@@ -95,7 +95,7 @@ class NLOSData {
         for (int i = 0; i < rank; i++) {
             num_elements *= dimensions[i];
         }
-        T *buff = (T*) new uint8_t[num_elements*sizeof(T)];
+        T *buff = (T*) new uint32_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
         switch(type_class) {
             case H5T_INTEGER:
@@ -122,7 +122,7 @@ class NLOSData {
 
     template <typename T>
     array_type<T> load_transient_data_dataset(const H5::DataSet &dataset, 
-                                              const std::vector<uint>& bounces) {
+                                              const std::vector<uint32_t>& bounces) {
         assert(bounces.size() > 0);
         H5T_class_t type_class = dataset.getTypeClass(); // Check the data type
         H5::DataSpace dataspace = dataset.getSpace();
@@ -136,7 +136,7 @@ class NLOSData {
             if (i == 2) num_elements *= bounces.size();
             else num_elements *= dimensions[i];
         }
-        T *buff = (T*) new uint8_t[num_elements*sizeof(T)];
+        T *buff = (T*) new uint32_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
         switch(type_class) {
             case H5T_INTEGER:
@@ -155,7 +155,7 @@ class NLOSData {
             // Forcefully assume dimension 2 contains bounces and read them 1 by 1
             count[2]  = 1;
             dataspace.selectNone();
-            for (uint b = 0; b < bounces.size(); b++)
+            for (uint32_t b = 0; b < bounces.size(); b++)
             {
                 // Bounces in the dataset start at 2, so the 3rd bounce is the 1st element
                 offset[2] = bounces[b]-2;
@@ -185,7 +185,7 @@ class NLOSData {
     }
 
     public:
-    NLOSData(std::string file_path, const std::vector<uint>& bounces) {
+    NLOSData(std::string file_path, const std::vector<uint32_t>& bounces) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
         data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces);
         camera_grid_positions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_POSITIONS));

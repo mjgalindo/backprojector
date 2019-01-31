@@ -1,14 +1,13 @@
 
 #include <chrono>
 #include <math.h>
-#include <helper_cuda.h>
 #include <vector>
 
 #include "backproject_cuda.hpp"
 
 namespace bp_cuda
 {
-const uint MAX_THREADS_PER_BLOCK = 32;
+const uint32_t MAX_THREADS_PER_BLOCK = 32;
 
 template <typename V1, typename V2>
 float distance_cpu(const V1 &p1, const V2 &p2)
@@ -41,8 +40,8 @@ struct pointpair{
 
 __global__
 void cuda_backprojection(float *transient_data,
-                         uint *T,
-                         uint *num_pairs,
+                         uint32_t *T,
+                         uint32_t *num_pairs,
                          pointpair *scanned_pairs,
                          float *camera_pos,
                          float *laser_pos,
@@ -51,9 +50,9 @@ void cuda_backprojection(float *transient_data,
                          float *voxel_inc,
                          float *t0,
                          float *deltaT,
-                         uint *voxels_per_side)
+                         uint32_t *voxels_per_side)
 {
-    uint voxel_id = blockIdx.x * voxels_per_side[0] * voxels_per_side[1] + blockIdx.y * voxels_per_side[2] + blockIdx.z;
+    uint32_t voxel_id = blockIdx.x * voxels_per_side[0] * voxels_per_side[1] + blockIdx.y * voxels_per_side[2] + blockIdx.z;
     __shared__ double local_array[MAX_THREADS_PER_BLOCK];
     double& radiance_sum = local_array[threadIdx.x];
     radiance_sum = 0.0;
@@ -62,9 +61,9 @@ void cuda_backprojection(float *transient_data,
                               volume_zero_pos[1]+voxel_inc[1]*blockIdx.y,
                               volume_zero_pos[2]+voxel_inc[2]*blockIdx.z};
 
-    for (uint i = 0; i < *num_pairs / MAX_THREADS_PER_BLOCK; i++)
+    for (uint32_t i = 0; i < *num_pairs / MAX_THREADS_PER_BLOCK; i++)
     {
-        uint pair_index = i * MAX_THREADS_PER_BLOCK + threadIdx.x;
+        uint32_t pair_index = i * MAX_THREADS_PER_BLOCK + threadIdx.x;
            
         const pointpair& pair = scanned_pairs[pair_index];
 
@@ -88,8 +87,8 @@ void cuda_backprojection(float *transient_data,
         
         float total_distance = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
         
-        uint time_index = round((total_distance - *t0) / *deltaT);
-        uint tdindex = pair_index * *T + time_index;
+        uint32_t time_index = round((total_distance - *t0) / *deltaT);
+        uint32_t tdindex = pair_index * *T + time_index;
 
         radiance_sum += transient_data[tdindex]; // * distance_attenuation;
     }
@@ -116,13 +115,13 @@ xt::xarray<float> backproject(
     bool is_confocal,
     vector3 volume_position,
     float volume_size,
-    uint voxels_per_side)
+    uint32_t voxels_per_side)
 {
     // TODO: This assumes the time dimension is first
-    uint T = transient_data.shape()[0];
+    uint32_t T = transient_data.shape()[0];
 
-    std::array<uint, 2> camera_grid_points;
-    std::array<uint, 2> laser_grid_points;
+    std::array<uint32_t, 2> camera_grid_points;
+    std::array<uint32_t, 2> laser_grid_points;
     
     {
         // camera_grid_positions.shape() is (points_x, points_y, 3)
@@ -136,8 +135,8 @@ xt::xarray<float> backproject(
         laser_grid_points[1] = t[1];
     }
 
-    const uint num_laser_points = laser_grid_points[0] * laser_grid_points[1];
-    const uint num_camera_points = camera_grid_points[0] * camera_grid_points[1];
+    const uint32_t num_laser_points = laser_grid_points[0] * laser_grid_points[1];
+    const uint32_t num_camera_points = camera_grid_points[0] * camera_grid_points[1];
 
     std::vector<pointpair> scanned_pairs;
 
@@ -169,11 +168,11 @@ xt::xarray<float> backproject(
     if (is_confocal) {
         scanned_pairs.resize(num_laser_points);
         #pragma omp parallel for collapse(2)
-        for (uint cx = 0; cx < camera_grid_points[0]; cx++)
-        for (uint cy = 0; cy < camera_grid_points[1]; cy++)
+        for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
+        for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
         {
-            uint index = cx * camera_grid_points[1] + cy;
-            for (uint i = 0; i < 3; i++)
+            uint32_t index = cx * camera_grid_points[1] + cy;
+            for (uint32_t i = 0; i < 3; i++)
             {
                 scanned_pairs[index].cam_point[i] = camera_grid_positions(i, cy, cx);
                 scanned_pairs[index].laser_point[i] = camera_grid_positions(i, cy, cx);
@@ -186,16 +185,16 @@ xt::xarray<float> backproject(
                              num_camera_points);
         
         #pragma omp parallel for collapse(4)
-        for (uint lx = 0; lx < laser_grid_points[0]; lx++)
-        for (uint ly = 0; ly < laser_grid_points[1]; ly++)
-        for (uint cx = 0; cx < camera_grid_points[0]; cx++)
-        for (uint cy = 0; cy < camera_grid_points[1]; cy++)
+        for (uint32_t lx = 0; lx < laser_grid_points[0]; lx++)
+        for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
+        for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
+        for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
         {
-            uint index = lx * laser_grid_points[1] * num_camera_points +
+            uint32_t index = lx * laser_grid_points[1] * num_camera_points +
                          ly * num_camera_points +
                          cx * camera_grid_points[1] +
                          cy;
-            for (uint i = 0; i < 3; i++)
+            for (uint32_t i = 0; i < 3; i++)
             {
                 scanned_pairs[index].cam_point[i] = camera_grid_positions(i, cy, cx);
                 scanned_pairs[index].laser_point[i] = laser_grid_positions(i, ly, lx);
@@ -203,7 +202,7 @@ xt::xarray<float> backproject(
         }
     }
     
-    uint num_pairs = scanned_pairs.size();
+    uint32_t num_pairs = scanned_pairs.size();
 
     vector3 volume_zero_pos = volume_position - volume_size / 2;
     float voxel_size = volume_size / (voxels_per_side - 1);
@@ -217,28 +216,28 @@ xt::xarray<float> backproject(
     xt::xarray<float> transient_chunk;
     if (is_confocal)
     {
-        transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint) (max_T_index - min_T_index)});
+        transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint32_t) (max_T_index - min_T_index)});
         #pragma omp parallel for collapse(2)
-        for (uint lx = 0; lx < laser_grid_points[0]; lx++)
-        for (uint ly = 0; ly < laser_grid_points[1]; ly++)
+        for (uint32_t lx = 0; lx < laser_grid_points[0]; lx++)
+        for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
         {
             xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::all(), ly, lx);
         }
     }
     else
     {
-        transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], camera_grid_points[0], camera_grid_points[1], (uint) (max_T_index - min_T_index)});
+        transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], camera_grid_points[0], camera_grid_points[1], (uint32_t) (max_T_index - min_T_index)});
         #pragma omp parallel for collapse(4)
-        for (uint lx = 0; lx < laser_grid_points[0]; lx++)
-        for (uint ly = 0; ly < laser_grid_points[1]; ly++)
-        for (uint cx = 0; cx < camera_grid_points[0]; cx++)
-        for (uint cy = 0; cy < camera_grid_points[1]; cy++)
+        for (uint32_t lx = 0; lx < laser_grid_points[0]; lx++)
+        for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
+        for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
+        for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
         {
             xt::view(transient_chunk, lx, ly, cx, cy, xt::all()) = xt::view(transient_data, xt::range(min_T_index, max_T_index), cy, cx, ly, lx);
         }
     }
 
-    uint total_transient_size = sizeof(float);
+    uint32_t total_transient_size = sizeof(float);
     for (const auto& d : transient_chunk.shape()) {
         total_transient_size *= d;
     }
@@ -247,15 +246,15 @@ xt::xarray<float> backproject(
     float *transient_chunk_gpu;
     cudaMalloc((void**)&transient_chunk_gpu, total_transient_size);
     cudaMemcpy(transient_chunk_gpu, transient_chunk.data(), total_transient_size, cudaMemcpyHostToDevice); 
-    /// uint *T,
-    uint *T_gpu;
-    uint chunkedT = (uint) (max_T_index - min_T_index);
-    cudaMalloc((void**)&T_gpu, sizeof(uint));
-    cudaMemcpy(T_gpu, &chunkedT, sizeof(uint), cudaMemcpyHostToDevice);
-    /// uint *num_pairs
-    uint *num_pairs_gpu;
-    cudaMalloc((void**)&num_pairs_gpu, sizeof(uint));
-    cudaMemcpy(num_pairs_gpu, &num_pairs, sizeof(uint), cudaMemcpyHostToDevice);
+    /// uint32_t *T,
+    uint32_t *T_gpu;
+    uint32_t chunkedT = (uint32_t) (max_T_index - min_T_index);
+    cudaMalloc((void**)&T_gpu, sizeof(uint32_t));
+    cudaMemcpy(T_gpu, &chunkedT, sizeof(uint32_t), cudaMemcpyHostToDevice);
+    /// uint32_t *num_pairs
+    uint32_t *num_pairs_gpu;
+    cudaMalloc((void**)&num_pairs_gpu, sizeof(uint32_t));
+    cudaMemcpy(num_pairs_gpu, &num_pairs, sizeof(uint32_t), cudaMemcpyHostToDevice);
     /// pointpair *scanned_pairs,
     pointpair* scanned_pairs_gpu;
     cudaMalloc((void**)&scanned_pairs_gpu, num_pairs*sizeof(pointpair));
@@ -272,7 +271,7 @@ xt::xarray<float> backproject(
     // Initialize voxel volume for the CPU
     xt::xarray<float> voxel_volume = xt::zeros<float>({voxels_per_side, voxels_per_side, voxels_per_side});
     float *voxel_volume_gpu;
-    uint nvoxels = voxels_per_side*voxels_per_side*voxels_per_side;
+    uint32_t nvoxels = voxels_per_side*voxels_per_side*voxels_per_side;
     cudaMalloc((void**)&voxel_volume_gpu, nvoxels*sizeof(float));
     cudaMemcpy(voxel_volume_gpu, voxel_volume.data(), nvoxels*sizeof(float), cudaMemcpyHostToDevice); 
     /// float *volume_zero_pos, 
@@ -285,18 +284,18 @@ xt::xarray<float> backproject(
     cudaMemcpy(voxel_inc_gpu, voxel_inc.data(), 3*sizeof(float), cudaMemcpyHostToDevice); 
     /// float *t0, 
     float *t0_gpu;
-    cudaMalloc((void**)&t0_gpu, sizeof(uint));
-    cudaMemcpy(t0_gpu, &T, sizeof(uint), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&t0_gpu, sizeof(uint32_t));
+    cudaMemcpy(t0_gpu, &T, sizeof(uint32_t), cudaMemcpyHostToDevice);
     /// float *deltaT,
     float *deltaT_gpu;
     cudaMalloc((void**)&deltaT_gpu, sizeof(float));
     cudaMemcpy(deltaT_gpu, &deltaT, sizeof(float), cudaMemcpyHostToDevice);
-    /// uint *voxels_per_side,
-    uint *voxels_per_side_gpu;
-    cudaMalloc((void**)&voxels_per_side_gpu, 3*sizeof(uint));
+    /// uint32_t *voxels_per_side,
+    uint32_t *voxels_per_side_gpu;
+    cudaMalloc((void**)&voxels_per_side_gpu, 3*sizeof(uint32_t));
     {
-        uint tmp_vps[] = {voxels_per_side, voxels_per_side, voxels_per_side};
-        cudaMemcpy(voxels_per_side_gpu, tmp_vps, 3*sizeof(uint), cudaMemcpyHostToDevice);
+        uint32_t tmp_vps[] = {voxels_per_side, voxels_per_side, voxels_per_side};
+        cudaMemcpy(voxels_per_side_gpu, tmp_vps, 3*sizeof(uint32_t), cudaMemcpyHostToDevice);
     }
     
     dim3 dimBlock(voxels_per_side, voxels_per_side, voxels_per_side);

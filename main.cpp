@@ -30,7 +30,7 @@ int main(int argc, const char *argv[])
         }
     }
 
-    std::vector<uint> bounces(0, highest_bounce - 2);
+    std::vector<uint32_t> bounces(0, highest_bounce - 2);
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
