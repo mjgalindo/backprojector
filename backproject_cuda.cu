@@ -35,8 +35,8 @@ void cuda_backprojection_impl(float *transient_data,
 							  uint32_t *kernel_voxels)
 {
 	// First needs to find the x y z coordinates of the voxel
-	uint32_t block_id = (blockIdx.x * MAX_BLOCKS_PER_KERNEL_RUN * MAX_BLOCKS_PER_KERNEL_RUN + 
-						 blockIdx.y * MAX_BLOCKS_PER_KERNEL_RUN +
+	uint32_t block_id = (blockIdx.x * gridDim.y * gridDim.z + 
+						 blockIdx.y * gridDim.z +
 						 blockIdx.z) * 3;
 	uint32_t xyz[3] = {kernel_voxels[block_id], kernel_voxels[block_id+1], kernel_voxels[block_id+2]};
 
@@ -54,7 +54,6 @@ void cuda_backprojection_impl(float *transient_data,
 				next_xyz[0] = next_xyz[0] + gridDim.x;
 			}
 		}
-		//if (threadIdx.x == 0) printf("%d %d %d -> %d %d %d\n", xyz[0], xyz[1], xyz[2], next_xyz[0], next_xyz[1], next_xyz[2]);
 	}
 
 	uint32_t voxel_id = xyz[0] * voxels_per_side[1] * voxels_per_side[2] + xyz[1] * voxels_per_side[2] + xyz[2];
@@ -64,7 +63,7 @@ void cuda_backprojection_impl(float *transient_data,
 		return;
 	}
 
-    __shared__ double local_array[MAX_THREADS_PER_BLOCK];
+    extern __shared__ double local_array[];
     double& radiance_sum = local_array[threadIdx.x];
     radiance_sum = 0.0;
 
@@ -72,9 +71,9 @@ void cuda_backprojection_impl(float *transient_data,
                               volume_zero_pos[1]+voxel_inc[1]*xyz[1],
                               volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
 
-    for (uint32_t i = 0; i < *num_pairs / MAX_THREADS_PER_BLOCK; i++)
+    for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
     {
-        uint32_t pair_index = i * MAX_THREADS_PER_BLOCK + threadIdx.x;
+        uint32_t pair_index = i * blockDim.x + threadIdx.x;
            
         const pointpair& pair = scanned_pairs[pair_index];
 
@@ -106,7 +105,7 @@ void cuda_backprojection_impl(float *transient_data,
 
     __syncthreads();
     double total_radiance = 0.0;
-    for (int i = 0; i < MAX_THREADS_PER_BLOCK; i++) {
+    for (int i = 0; i < blockDim.x; i++) {
         total_radiance += local_array[i];
     }
 
@@ -128,7 +127,6 @@ void call_cuda_backprojection(const float* transient_chunk,
                               float deltaT)
 {
     // Copy all the necessary information to the device
-
 	/// float *transient_data,
 	float *transient_chunk_gpu;
 	cudaMalloc((void **)&transient_chunk_gpu, transient_size*sizeof(float));
@@ -181,44 +179,62 @@ void call_cuda_backprojection(const float* transient_chunk,
 	cudaMalloc((void **)&voxels_per_side_gpu, 3 * sizeof(uint32_t));
     cudaMemcpy(voxels_per_side_gpu, voxels_per_side, 3 * sizeof(uint32_t), cudaMemcpyHostToDevice);
 
-	std::vector<uint32_t> kernel_voxels(MAX_BLOCKS_PER_KERNEL_RUN * MAX_BLOCKS_PER_KERNEL_RUN * MAX_BLOCKS_PER_KERNEL_RUN * 3);
-	for (int x = 0; x < MAX_BLOCKS_PER_KERNEL_RUN; x++)
-	for (int y = 0; y < MAX_BLOCKS_PER_KERNEL_RUN; y++)
-	for (int z = 0; z < MAX_BLOCKS_PER_KERNEL_RUN; z++)
+	// uint32_t *kernel_voxels
+	
+	// Ideally, we would run {voxels_per_side[0], voxels_per_side[1], voxels_per_side[2]} 
+	// blocks, but windows doesn't like this, so we run many smaller kernels.
+	
 	{
-		kernel_voxels[(x*MAX_BLOCKS_PER_KERNEL_RUN*MAX_BLOCKS_PER_KERNEL_RUN+y*MAX_BLOCKS_PER_KERNEL_RUN+z)*3 + 0] = x;
-		kernel_voxels[(x*MAX_BLOCKS_PER_KERNEL_RUN*MAX_BLOCKS_PER_KERNEL_RUN+y*MAX_BLOCKS_PER_KERNEL_RUN+z)*3 + 1] = y;
-		kernel_voxels[(x*MAX_BLOCKS_PER_KERNEL_RUN*MAX_BLOCKS_PER_KERNEL_RUN+y*MAX_BLOCKS_PER_KERNEL_RUN+z)*3 + 2] = z;
+		cudaError_t error = cudaGetLastError();
+		if (error != cudaSuccess)
+		{
+			// print the CUDA error message and exit
+			printf("CUDA error: %s\n", cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+	int blockSize, minGridSize;
+	cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, cuda_backprojection_impl, sizeof(double), 0); 
+	std::cout << "JUST SAYIN: " << minGridSize << ' ' << blockSize << std::endl;
+	{
+		cudaError_t error = cudaGetLastError();
+		if (error != cudaSuccess)
+		{
+			// print the CUDA error message and exit
+			printf("CUDA error: %s\n", cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+	std::vector<uint32_t> kernel_voxels(minGridSize * minGridSize * minGridSize * 3);
+	for (int x = 0; x < minGridSize; x++)
+	for (int y = 0; y < minGridSize; y++)
+	for (int z = 0; z < minGridSize; z++)
+	{
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 0] = x;
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 1] = y;
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 2] = z;
 	}
 
 	uint32_t *kernel_voxels_gpu;
-	const uint32_t num_blocks_per_kernel_run = MAX_BLOCKS_PER_KERNEL_RUN*MAX_BLOCKS_PER_KERNEL_RUN*MAX_BLOCKS_PER_KERNEL_RUN;
+	const uint32_t num_blocks_per_kernel_run = minGridSize*minGridSize*minGridSize;
 	cudaMalloc((void **)&kernel_voxels_gpu, 3*num_blocks_per_kernel_run*sizeof(uint32_t));
 	cudaMemcpy(kernel_voxels_gpu, kernel_voxels.data(), 3*num_blocks_per_kernel_run*sizeof(uint32_t), cudaMemcpyHostToDevice);
-	// Ideally, we would run {voxels_per_side[0], voxels_per_side[1], voxels_per_side[2]} 
-	// blocks, but windows doesn't like this, so we run many smaller kernels.
 
-	int blockSize;   // The launch configurator returned block size 
-	int minGridSize; // The minimum grid size needed to achieve the 
-					// maximum occupancy for a full device launch 
-	int gridSize;    // The actual grid size needed, based on input size 
-
-	cudaOccupancyMaxPotentialBlockSize( &minGridSize, &blockSize, cuda_backprojection_impl, 0, 0); 
-	std::cout << "JUST SAYIN: " << minGridSize << ' ' << blockSize << std::endl;
-
-	dim3 dimBlock(MAX_BLOCKS_PER_KERNEL_RUN, MAX_BLOCKS_PER_KERNEL_RUN, MAX_BLOCKS_PER_KERNEL_RUN);
-	dim3 dimThreads(MAX_THREADS_PER_BLOCK, 1, 1);
+	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
+	dim3 threads_in_block(blockSize, 1, 1);
 
 	std::cout << "Backprojecting on the GPU" << std::endl;
-	std::cout << "BLOCKS: " << dimBlock.x << ' ' << dimBlock.y << ' ' << dimBlock.z << std::endl;
-	std::cout << "THREADS: " << dimThreads.x << ' ' << dimThreads.y << ' ' << dimThreads.z << std::endl;
-
-	uint32_t number_of_runs = std::ceil(voxels_per_side[0] / (float) MAX_BLOCKS_PER_KERNEL_RUN);
+	std::cout << "BLOCKS: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
+	std::cout << "THREADS: " << threads_in_block.x << ' ' << threads_in_block.y << ' ' << threads_in_block.z << std::endl;
+	
+	uint32_t number_of_runs = std::ceil(voxels_per_side[0] / (float) minGridSize);
 	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
-		cuda_backprojection_impl<<<dimBlock, dimThreads>>>(transient_chunk_gpu,
+		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(double)>>>(transient_chunk_gpu,
 			T_gpu,
 			num_pairs_gpu,
 			scanned_pairs_gpu,

@@ -5,9 +5,6 @@
 #include <vector>
 #include <array>
 
-const uint32_t MAX_THREADS_PER_BLOCK = 32;
-const uint32_t MAX_BLOCKS_PER_KERNEL_RUN = 8;
-
 struct pointpair
 {
 	float cam_point[3], laser_point[3];
