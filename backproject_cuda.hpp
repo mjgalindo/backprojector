@@ -1,27 +1,28 @@
 #ifndef BACKPROJECT_CUDA
 #define BACKPROJECT_CUDA
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xadapt.hpp>
-#include <xtensor/xcontainer.hpp>
-#include <xtensor/xview.hpp>
+#include <inttypes.h>
+#include <vector>
+#include <array>
 
-namespace bp_cuda
+const uint32_t MAX_THREADS_PER_BLOCK = 32;
+const uint32_t MAX_BLOCKS_PER_KERNEL_RUN = 8;
+
+struct pointpair
 {
-using vector3 = xt::xtensor_fixed<float, xt::xshape<3>>;
+	float cam_point[3], laser_point[3];
+};
 
-xt::xarray<float> backproject(
-    xt::xarray<float> &transient_data,
-    const xt::xtensor<float, 3> &camera_grid_positions,
-    const xt::xtensor<float, 3> &laser_grid_positions,
-    vector3 camera_position,
-    vector3 laser_position,
-    float t0,
-    float deltaT,
-    bool is_confocal,
-    vector3 volume_position,
-    float volume_size,
-    uint32_t voxels_per_side);
-} // namespace bp_cuda
+void call_cuda_backprojection(const float* transient_chunk,
+                              uint32_t transient_size, uint32_t T,
+                              const std::vector<pointpair> scanned_pairs,
+                              const float* camera_position,
+                              const float* laser_position,
+                              float* voxel_volume,
+                              const uint32_t* voxels_per_side,
+                              const float* volume_zero_pos,
+                              const float* voxel_inc,
+                              uint32_t t0,
+                              float deltaT);
+
 #endif

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <tuple>
+
 #include <H5Cpp.h>
 #include <chrono>
 
@@ -129,7 +130,7 @@ class NLOSData {
         int rank = dataspace.getSimpleExtentNdims();
         std::vector<hsize_t> dimensions(rank);
         dataspace.getSimpleExtentDims(dimensions.data(), nullptr);
-        
+
         hsize_t num_elements = 1;
         for (int i = 0; i < rank; i++) {
             // Account only for the chosen bounces
@@ -147,8 +148,8 @@ class NLOSData {
                 ptype = H5::PredType::NATIVE_FLOAT;
         }
         {
-            hsize_t offset[rank] = {};   // hyperslab offset in the file
-            hsize_t count[rank] = {};    // size of the hyperslab in the file
+            std::vector<hsize_t> offset(rank, 0);   // hyperslab offset in the file
+            std::vector<hsize_t> count(rank, 0);    // size of the hyperslab in the file
             for (int i = 0; i < rank; i++)
                 count[i] = dimensions[i];
             
@@ -159,8 +160,12 @@ class NLOSData {
             {
                 // Bounces in the dataset start at 2, so the 3rd bounce is the 1st element
                 offset[2] = bounces[b]-2;
-                dataspace.selectHyperslab(H5S_SELECT_OR, count, offset);
+                dataspace.selectHyperslab(H5S_SELECT_OR, count.data(), offset.data());
             }
+			for (int i = 0; i < count.size(); i++)
+			{
+				std::cout << count[i] << ' ' << offset[i] << std::endl;
+			}
         }
         dimensions[2] = bounces.size();
 
@@ -171,8 +176,12 @@ class NLOSData {
             dimensions.erase(dimensions.begin() + 2);
         }
         #ifdef USE_XTENSOR
-        array_type<T> retval = xt::adapt(buff, num_elements, xt::acquire_ownership(), dimensions);
-        #else
+		std::cout << "Adapting buffer" << std::endl;
+		
+		std::cout << num_elements << std::endl;
+        array_type<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
+		std::cout << "buffer's been adapted " << xt::sum(retval) << std::endl;
+		#else
         array_type<T> retval;
         retval.buff = buff;
         retval.total_elements = num_elements;
@@ -186,9 +195,12 @@ class NLOSData {
 
     public:
     NLOSData(std::string file_path, const std::vector<uint32_t>& bounces) {
+		std::cout << file_path << std::endl;
         H5::H5File file(file_path, H5F_ACC_RDONLY);
+		std::cout << "File has been read" << std::endl;
         data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces);
-        camera_grid_positions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_POSITIONS));
+		std::cout << "Data has been read" << std::endl;
+		camera_grid_positions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_POSITIONS));
         camera_grid_normals = load_field_array<float>(file.openDataSet(DS_CAM_GRID_NORMALS));
         camera_position = load_field_array<float>(file.openDataSet(DS_CAM_POSITION));
         camera_grid_dimensions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_SIZE)); 

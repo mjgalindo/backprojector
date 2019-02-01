@@ -82,7 +82,7 @@ int main(int argc, const char *argv[])
     }
     else
     {
-        volume = bp_cuda::backproject(transient_data,
+        volume = bp::gpu_backproject (transient_data,
                                       data.camera_grid_positions,
                                       data.laser_grid_positions,
                                       data.camera_position,
