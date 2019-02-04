@@ -4,7 +4,7 @@
 #include <iostream>
 #include <chrono>
 
-#include <helper_cuda.h>
+// #include <helper_cuda.h>
 #include "backproject_cuda.hpp"
 
 __device__
@@ -35,18 +35,26 @@ void cuda_backprojection_impl(float *transient_data,
 							  uint32_t *kernel_voxels)
 {
 	// First needs to find the x y z coordinates of the voxel
-	uint32_t block_id = (blockIdx.x * gridDim.y * gridDim.z + 
+	uint32_t block_id = (blockIdx.x * gridDim.y * gridDim.z +
 						 blockIdx.y * gridDim.z +
 						 blockIdx.z) * 3;
 	uint32_t xyz[3] = {kernel_voxels[block_id], kernel_voxels[block_id+1], kernel_voxels[block_id+2]};
 
+	// If the block is outside the volume don't do anything
+	if (xyz[0] >= voxels_per_side[0] || xyz[1] >= voxels_per_side[1] || xyz[2] >= voxels_per_side[2])
+		return;
+	
+    __syncthreads();
+	if (threadIdx.x == 0)
 	{
-		// Set the next voxel to be computed by this blockIdx in the next call
+		// Set the next voxel to be computed by this blockIdx in the next call.
+		// We advance on the Z axis by the dimensions of the kernel, overflowing to the Y axis and 
+		// then to the X axis. This would match row-major access to the 3D array.
 		uint32_t* next_xyz = &kernel_voxels[block_id];
 		next_xyz[2] = xyz[2] + gridDim.z;
 		if (next_xyz[2] >= voxels_per_side[2])
 		{
-			next_xyz[2] = next_xyz[2] % voxels_per_side[0];
+			next_xyz[2] = next_xyz[2] % voxels_per_side[2];
 			next_xyz[1] = next_xyz[1] + gridDim.y;
 			if (next_xyz[1] >= voxels_per_side[1])
 			{
@@ -55,8 +63,12 @@ void cuda_backprojection_impl(float *transient_data,
 			}
 		}
 	}
-
-	uint32_t voxel_id = xyz[0] * voxels_per_side[1] * voxels_per_side[2] + xyz[1] * voxels_per_side[2] + xyz[2];
+    __syncthreads();
+	
+	uint32_t voxel_id = xyz[0] * voxels_per_side[1] * voxels_per_side[2] +
+						xyz[1] * voxels_per_side[2] + 
+						xyz[2];
+	
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
 	if (voxel_volume[voxel_id] > 0.0)
 	{
@@ -104,13 +116,16 @@ void cuda_backprojection_impl(float *transient_data,
     }
 
     __syncthreads();
-    double total_radiance = 0.0;
-    for (int i = 0; i < blockDim.x; i++) {
-        total_radiance += local_array[i];
-    }
-
-    // All threads write the same value
-	voxel_volume[voxel_id] = total_radiance;
+	if (threadIdx.x == 0)
+	{
+		// Compute the reduction in a single thread and write it
+		double total_radiance = 0.0;
+		for (int i = 0; i < blockDim.x; i++) {
+			total_radiance += local_array[i];
+		}
+		voxel_volume[voxel_id] = (float) total_radiance;
+	}
+    __syncthreads();
 }
 
 
@@ -196,7 +211,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 	int blockSize, minGridSize;
 	cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, cuda_backprojection_impl, sizeof(double), 0); 
-	std::cout << "JUST SAYIN: " << minGridSize << ' ' << blockSize << std::endl;
+
 	{
 		cudaError_t error = cudaGetLastError();
 		if (error != cudaSuccess)
@@ -224,13 +239,15 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
 	dim3 threads_in_block(blockSize, 1, 1);
-
-	std::cout << "Backprojecting on the GPU" << std::endl;
-	std::cout << "BLOCKS: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
-	std::cout << "THREADS: " << threads_in_block.x << ' ' << threads_in_block.y << ' ' << threads_in_block.z << std::endl;
-	
 	uint32_t number_of_runs = std::ceil(voxels_per_side[0] / (float) minGridSize);
 	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
+
+	std::cout << "Backprojecting on the GPU using the \"optimal\" configuration" << std::endl;
+	std::cout << "# Blocks: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
+	std::cout << "# Threads per block: " << threads_in_block.x << ' ' << threads_in_block.y << ' ' << threads_in_block.z << std::endl;
+	std::cout << "# Kernel calls: " << number_of_runs << std::endl;
+	
+	auto start = std::chrono::steady_clock::now();
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
@@ -247,12 +264,12 @@ void call_cuda_backprojection(const float* transient_chunk,
 			deltaT_gpu,
 			voxels_per_side_gpu,
 			kernel_voxels_gpu);
-		cudaDeviceSynchronize();
-		auto end = std::chrono::steady_clock::now();
-		std::cout << "Elapsed time in milliseconds : "
-			<< std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
-			<< " ms" << std::endl;
 	}
+	cudaDeviceSynchronize();
+	auto end = std::chrono::steady_clock::now();
+	std::cout << "Backprojection took "
+		<< std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+		<< " ms" << std::endl;
 
 	// check for errors
 	cudaError_t error = cudaGetLastError();
@@ -264,7 +281,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	}
 
 	cudaMemcpy(voxel_volume, voxel_volume_gpu, nvoxels * sizeof(float), cudaMemcpyDeviceToHost);
-
+	
 	cudaFree(transient_chunk_gpu);
 	cudaFree(T_gpu);
 	cudaFree(num_pairs_gpu);
