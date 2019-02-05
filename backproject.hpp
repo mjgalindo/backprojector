@@ -284,11 +284,11 @@ xt::xarray<float> gpu_backproject(
     if (is_confocal)
     {
         transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
             for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
             {
-                xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::all(), ly, lx);
+                xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::range(min_T_index, max_T_index), ly, lx);
             }
     }
     else
