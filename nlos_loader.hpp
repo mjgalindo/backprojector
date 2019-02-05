@@ -123,64 +123,49 @@ class NLOSData {
 
     template <typename T>
     array_type<T> load_transient_data_dataset(const H5::DataSet &dataset, 
-                                              const std::vector<uint32_t>& bounces) {
+                                              const std::vector<uint32_t>& bounces,
+                                              bool sum_bounces=false,
+                                              bool row_major=false) {
         assert(bounces.size() > 0);
-        H5T_class_t type_class = dataset.getTypeClass(); // Check the data type
         H5::DataSpace dataspace = dataset.getSpace();
         int rank = dataspace.getSimpleExtentNdims();
         std::vector<hsize_t> dimensions(rank);
         dataspace.getSimpleExtentDims(dimensions.data(), nullptr);
-
+        size_t bounce_axis = row_major ? 4 : 2;
         hsize_t num_elements = 1;
         for (int i = 0; i < rank; i++) {
             // Account only for the chosen bounces
-            if (i == 2) num_elements *= bounces.size();
+            if (i == bounce_axis) num_elements *= bounces.size();
             else num_elements *= dimensions[i];
         }
         T *buff = (T*) new uint32_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
-        switch(type_class) {
-            case H5T_INTEGER:
-                ptype = H5::PredType::NATIVE_INT32;
-                break;
-            case H5T_FLOAT:
-            default:
-                ptype = H5::PredType::NATIVE_FLOAT;
-        }
         {
             std::vector<hsize_t> offset(rank, 0);   // hyperslab offset in the file
             std::vector<hsize_t> count(rank, 0);    // size of the hyperslab in the file
             for (int i = 0; i < rank; i++)
                 count[i] = dimensions[i];
-            
-            // Forcefully assume dimension 2 contains bounces and read them 1 by 1
-            count[2]  = 1;
+            count[bounce_axis] = 1;
             dataspace.selectNone();
             for (uint32_t b = 0; b < bounces.size(); b++)
             {
                 // Bounces in the dataset start at 2, so the 3rd bounce is the 1st element
-                offset[2] = bounces[b]-2;
+                offset[bounce_axis] = bounces[b]-2;
                 dataspace.selectHyperslab(H5S_SELECT_OR, count.data(), offset.data());
             }
-			for (int i = 0; i < count.size(); i++)
-			{
-				std::cout << count[i] << ' ' << offset[i] << std::endl;
-			}
         }
-        dimensions[2] = bounces.size();
+        dimensions[bounce_axis] = bounces.size();
 
         H5::DataSpace mspace = H5::DataSpace(rank, dimensions.data());
 
         dataset.read(buff, ptype, mspace, dataspace);
-        if (dimensions[2] == 1) {
-            dimensions.erase(dimensions.begin() + 2);
+        if (dimensions[bounce_axis] == 1) {
+            dimensions.erase(dimensions.begin() + bounce_axis);
         }
         #ifdef USE_XTENSOR
-		std::cout << "Adapting buffer" << std::endl;
-		
-		std::cout << num_elements << std::endl;
         array_type<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
-		std::cout << "buffer's been adapted " << xt::sum(retval) << std::endl;
+        if (sum_bounces && bounces.size() > 1)
+            retval = xt::sum(retval, {bounce_axis});
 		#else
         array_type<T> retval;
         retval.buff = buff;
@@ -189,17 +174,28 @@ class NLOSData {
         for (int i = 0; i < rank; i++) {
             retval.shape[i] = dimensions[i];
         }
+        assert(!sum_bounces);
         #endif
         return retval;
     }
 
     public:
-    NLOSData(std::string file_path, const std::vector<uint32_t>& bounces) {
-		std::cout << file_path << std::endl;
+    NLOSData(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
-		std::cout << "File has been read" << std::endl;
-        data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces);
-		std::cout << "Data has been read" << std::endl;
+        is_row_major = false;
+        if (file.attrExists("engine"))
+        {
+            H5::Attribute att(file.openAttribute("engine"));
+            H5::StrType stype = att.getStrType();
+            std::string engine;
+            att.read(stype, engine);
+            if (engine.compare("dsrender") == 0)
+            {
+                is_row_major = true;
+            }
+        }
+
+        data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces, sum_bounces, is_row_major);
 		camera_grid_positions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_POSITIONS));
         camera_grid_normals = load_field_array<float>(file.openDataSet(DS_CAM_GRID_NORMALS));
         camera_position = load_field_array<float>(file.openDataSet(DS_CAM_POSITION));
@@ -249,4 +245,6 @@ class NLOSData {
     array_type<float> deltat;  // Per pixel aperture duration (time resolution)
     array_type<int> is_confocal; // Boolean value. 1 if the dataset is confocal, 0 if all combinations 
     // of laser points and spad points were captured/rendered
+
+    bool is_row_major = false;
 };

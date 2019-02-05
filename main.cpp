@@ -59,14 +59,35 @@ int main(int argc, const char *argv[])
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
-    NLOSData data(filename, bounces);
+    NLOSData data(filename, bounces, true);
 
     bool is_confocal = data.is_confocal[0];
     float deltaT = data.deltat[0];
     float t0 = data.t0[0];
-    // transient_data.shape() -> (channels, T, cy, cx, ly, lx)
-    xt::xarray<float> transient_data = xt::view(data.data, 0, xt::all());
-    // transient_data.shape() -> (T, cy, cx, ly, lx)
+
+    // if it is not row major: transient_data.shape() -> (channel, T, cy, cx, ly, lx)
+    // if it is row major: transient_data.shape() -> (lx, ly, cx, cy, T, channel)
+    xt::xarray<float> transient_data;
+    
+    // Discard channel data
+    if (data.is_row_major)
+    {
+        auto dshape = data.data.shape();
+        for (int i = 0; i < dshape.size(); i++) std::cout << dshape[i] << ' ';
+        std::cout << std::endl;
+        if (is_confocal)
+            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0);
+        else
+            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), 0);
+        dshape = transient_data.shape();
+        for (int i = 0; i < dshape.size(); i++) std::cout << dshape[i] << ' ';
+        std::cout << std::endl;
+
+    }
+    else
+    {
+        transient_data = xt::view(data.data, 0, xt::all());
+    }
 
     xt::xarray<float> volume;
     if (use_cpu)
@@ -89,7 +110,9 @@ int main(int argc, const char *argv[])
                                       data.laser_position,
                                       t0, deltaT, is_confocal,
                                       data.hidden_volume_position,
-                                      data.hidden_volume_size[0] * 2, voxel_resolution);
+                                      data.hidden_volume_size[0] * data.is_row_major ? 1 : 2, 
+                                      voxel_resolution,
+                                      data.is_row_major);
     }
     char outfile[256] = {};
     sprintf(outfile, "test_%d.hdf5", voxel_resolution);
