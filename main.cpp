@@ -73,15 +73,11 @@ int main(int argc, const char *argv[])
     if (data.is_row_major)
     {
         auto dshape = data.data.shape();
-        for (int i = 0; i < dshape.size(); i++) std::cout << dshape[i] << ' ';
-        std::cout << std::endl;
         if (is_confocal)
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0);
         else
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), 0);
         dshape = transient_data.shape();
-        for (int i = 0; i < dshape.size(); i++) std::cout << dshape[i] << ' ';
-        std::cout << std::endl;
 
     }
     else

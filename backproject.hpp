@@ -323,7 +323,7 @@ xt::xarray<float> gpu_backproject(
     {
         std::cout << "Copying compact transposed transient data measurements" << std::flush;
     }
-    
+
     xt::xarray<float> transient_chunk;
     if (is_confocal)
     {
@@ -340,12 +340,12 @@ xt::xarray<float> gpu_backproject(
                 {
                     xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::range(min_T_index, max_T_index), ly, lx);
                 }
-                        }
+            }
     }
     else
     {
         transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], camera_grid_points[0], camera_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
-//#pragma omp parallel for
+        //#pragma omp parallel for
         for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
             for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
                 for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
