@@ -78,17 +78,16 @@ int main(int argc, const char *argv[])
     // Discard channel data
     if (data.is_row_major)
     {
-        auto dshape = data.data.shape();
         if (is_confocal)
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0);
         else
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), 0);
-        dshape = transient_data.shape();
     }
     else
     {
         transient_data = xt::view(data.data, 0, xt::all());
     }
+    transient_data = xt::squeeze(transient_data);
     xt::xarray<float> volume;
     if (use_cpu)
     {

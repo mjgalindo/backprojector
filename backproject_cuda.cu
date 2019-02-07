@@ -138,7 +138,7 @@ void call_cuda_backprojection(const float* transient_chunk,
                               const uint32_t* voxels_per_side,
                               const float* volume_zero_pos,
                               const float* voxel_inc,
-                              uint32_t t0,
+                              float t0,
                               float deltaT)
 {
     // Copy all the necessary information to the device
@@ -183,8 +183,8 @@ void call_cuda_backprojection(const float* transient_chunk,
 	cudaMemcpy(voxel_inc_gpu, voxel_inc, 3 * sizeof(float), cudaMemcpyHostToDevice);
 	/// float *t0,
 	float *t0_gpu;
-	cudaMalloc((void **)&t0_gpu, sizeof(uint32_t));
-	cudaMemcpy(t0_gpu, &T, sizeof(uint32_t), cudaMemcpyHostToDevice);
+	cudaMalloc((void **)&t0_gpu, sizeof(float));
+	cudaMemcpy(t0_gpu, &t0, sizeof(float), cudaMemcpyHostToDevice);
 	/// float *deltaT,
 	float *deltaT_gpu;
 	cudaMalloc((void **)&deltaT_gpu, sizeof(float));

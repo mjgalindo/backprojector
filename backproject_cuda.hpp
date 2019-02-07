@@ -19,7 +19,7 @@ void call_cuda_backprojection(const float* transient_chunk,
                               const uint32_t* voxels_per_side,
                               const float* volume_zero_pos,
                               const float* voxel_inc,
-                              uint32_t t0,
+                              float t0,
                               float deltaT);
 
 #endif

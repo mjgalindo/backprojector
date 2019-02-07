@@ -159,9 +159,6 @@ class NLOSData {
         H5::DataSpace mspace = H5::DataSpace(rank, dimensions.data());
 
         dataset.read(buff, ptype, mspace, dataspace);
-        if (dimensions[bounce_axis] == 1) {
-            dimensions.erase(dimensions.begin() + bounce_axis);
-        }
         #ifdef USE_XTENSOR
         array_type<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
         if (sum_bounces && bounces.size() > 1)
@@ -183,7 +180,6 @@ class NLOSData {
     NLOSData(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
         is_row_major = false;
-        std::string engine = "default";
         if (file.attrExists("data order"))
         {
             H5::Attribute att(file.openAttribute("data order"));
@@ -225,7 +221,7 @@ class NLOSData {
                 hidden_volume_size.buff[i] *= 2;
         #endif
         }
-        t0 = load_field_array<int>(file.openDataSet(DS_T0));
+        t0 = load_field_array<float>(file.openDataSet(DS_T0));
         bins = load_field_array<int>(file.openDataSet(DS_T));
         deltat = load_field_array<float>(file.openDataSet(DS_DELTA_T));
         is_confocal = load_field_array<int>(file.openDataSet(DS_IS_CONFOCAL));
@@ -255,11 +251,12 @@ class NLOSData {
     /// These next are arrays for consistency, but they should be single values ///
     array_type<float> hidden_volume_size; // Dimensions of prism containing the hidden geometry
     array_type<int> t; // Time resolution
-    array_type<int> t0; // Time at which the captures start (first data column)
+    array_type<float> t0; // Time at which the captures start 
     array_type<int> bins;  // Number of time instants recorded (number of columns in the data)
     array_type<float> deltat;  // Per pixel aperture duration (time resolution)
     array_type<int> is_confocal; // Boolean value. 1 if the dataset is confocal, 0 if all combinations 
     // of laser points and spad points were captured/rendered
 
     bool is_row_major = false;
+    std::string engine = "default";
 };
