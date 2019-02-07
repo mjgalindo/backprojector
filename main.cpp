@@ -38,6 +38,8 @@ int main(int argc, const char *argv[])
     int highest_bounce = 3;
     int voxel_resolution = 32;
     bool use_cpu = false;
+    bool run_all_bounces = false;
+    
     std::string filename(argv[1]);
     for (int i = 2; i < argc; i++)
     {
@@ -53,13 +55,17 @@ int main(int argc, const char *argv[])
         {
             use_cpu = true;
         }
+        else if (strcmp(argv[i], "-combine") == 0)
+        {
+            run_all_bounces = true;
+        }
     }
 
     std::vector<uint32_t> bounces(0, highest_bounce - 2);
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
-    NLOSData data(filename, bounces, true);
+    NLOSData data(filename, bounces, !run_all_bounces);
 
     bool is_confocal = data.is_confocal[0];
     float deltaT = data.deltat[0];
@@ -78,13 +84,11 @@ int main(int argc, const char *argv[])
         else
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), 0);
         dshape = transient_data.shape();
-
     }
     else
     {
         transient_data = xt::view(data.data, 0, xt::all());
     }
-
     xt::xarray<float> volume;
     if (use_cpu)
     {
@@ -95,7 +99,8 @@ int main(int argc, const char *argv[])
                                  data.laser_position,
                                  t0, deltaT, is_confocal,
                                  data.hidden_volume_position,
-                                 data.hidden_volume_size[0] * 2, voxel_resolution);
+                                 data.hidden_volume_size[0],
+                                 voxel_resolution);
     }
     else
     {
@@ -106,13 +111,13 @@ int main(int argc, const char *argv[])
                                       data.laser_position,
                                       t0, deltaT, is_confocal,
                                       data.hidden_volume_position,
-                                      data.hidden_volume_size[0] * data.is_row_major ? 1 : 2, 
+                                      data.hidden_volume_size[0], 
                                       voxel_resolution,
                                       data.is_row_major);
     }
-    char outfile[256] = {};
-    sprintf(outfile, "test_%d.hdf5", voxel_resolution);
-    save_volume(std::string(outfile), volume);
+
+    std::string outfile = filename.substr(0, filename.find(".hdf5")) + "_recon.hdf5";
+    save_volume(outfile, volume);
     std::cout << "Backprojected to " << std::string(outfile) << std::endl;
     return 0;
 }

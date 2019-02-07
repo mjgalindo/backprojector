@@ -82,7 +82,7 @@ class NLOSData {
     const std::string DS_T = "t";
     const std::string DS_HIDDEN_VOLUME_POSITION = "hiddenVolumePosition";
     const std::string DS_HIDDEN_VOLUME_ROTATION = "hiddenVolumeRotation";
-    const std::string DS_HIDDEN_VOLUME_RADIUS = "hiddenVolumeSize";
+    const std::string DS_HIDDEN_VOLUME_SIZE = "hiddenVolumeSize";
     const std::string DS_IS_CONFOCAL = "isConfocal";
 
     template <typename T>
@@ -183,16 +183,23 @@ class NLOSData {
     NLOSData(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
         is_row_major = false;
+        std::string engine = "default";
+        if (file.attrExists("data order"))
+        {
+            H5::Attribute att(file.openAttribute("data order"));
+            H5::StrType stype = att.getStrType();
+            std::string engine;
+            att.read(stype, engine);
+            if (engine.compare("row-major") == 0)
+            {
+                is_row_major = true;
+            }
+        }
         if (file.attrExists("engine"))
         {
             H5::Attribute att(file.openAttribute("engine"));
             H5::StrType stype = att.getStrType();
-            std::string engine;
             att.read(stype, engine);
-            if (engine.compare("dsrender") == 0)
-            {
-                is_row_major = true;
-            }
         }
 
         data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces, sum_bounces, is_row_major);
@@ -208,7 +215,16 @@ class NLOSData {
         laser_grid_points = load_field_array<float>(file.openDataSet(DS_LASER_GRID_POINTS)); 
         hidden_volume_position = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_POSITION)); 
         hidden_volume_rotation = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_ROTATION)); 
-        hidden_volume_size = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_RADIUS));
+        hidden_volume_size = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_SIZE));
+        if (engine.compare("dsrender") != 0) 
+        {
+        #ifdef USE_XTENSOR
+            hidden_volume_size = hidden_volume_size * 2;
+        #else
+            for (uint32_t i = 0; i < hidden_volume_size.total_elements; i++)
+                hidden_volume_size.buff[i] *= 2;
+        #endif
+        }
         t0 = load_field_array<int>(file.openDataSet(DS_T0));
         bins = load_field_array<int>(file.openDataSet(DS_T));
         deltat = load_field_array<float>(file.openDataSet(DS_DELTA_T));
@@ -237,8 +253,7 @@ class NLOSData {
     array_type<float> hidden_volume_rotation; // Hidden geometry rotation with respect 
     // to the ground truth
     /// These next are arrays for consistency, but they should be single values ///
-    array_type<float> hidden_volume_size; // Half-length of a cube containing the hidden
-    // geometry
+    array_type<float> hidden_volume_size; // Dimensions of prism containing the hidden geometry
     array_type<int> t; // Time resolution
     array_type<int> t0; // Time at which the captures start (first data column)
     array_type<int> bins;  // Number of time instants recorded (number of columns in the data)
