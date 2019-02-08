@@ -38,7 +38,6 @@ int main(int argc, const char *argv[])
     int highest_bounce = 3;
     int voxel_resolution = 32;
     bool use_cpu = false;
-    bool run_all_bounces = false;
     
     std::string filename(argv[1]);
     for (int i = 2; i < argc; i++)
@@ -55,17 +54,13 @@ int main(int argc, const char *argv[])
         {
             use_cpu = true;
         }
-        else if (strcmp(argv[i], "-combine") == 0)
-        {
-            run_all_bounces = true;
-        }
     }
 
     std::vector<uint32_t> bounces(0, highest_bounce - 2);
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
-    NLOSData data(filename, bounces, !run_all_bounces);
+    NLOSData data(filename, bounces, true);
 
     bool is_confocal = data.is_confocal[0];
     float deltaT = data.deltat[0];
@@ -75,20 +70,21 @@ int main(int argc, const char *argv[])
     // if it is row major: transient_data.shape() -> (lx, ly, cx, cy, T, channel)
     xt::xarray<float> transient_data;
     
-    // Discard channel data
+    // Squeeze channel and bounce dimensions
     if (data.is_row_major)
     {
         if (is_confocal)
-            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0);
+            transient_data = xt::view(data.data, xt::all(), xt::all(), 0, xt::all(), 0);
         else
-            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), xt::all(), 0);
+            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0, xt::all(), 0);
     }
     else
     {
-        transient_data = xt::view(data.data, 0, xt::all());
+        transient_data = xt::view(data.data, 0, xt::all(), 0, xt::all());
     }
-    transient_data = xt::squeeze(transient_data);
+
     xt::xarray<float> volume;
+
     if (use_cpu)
     {
         volume = bp::backproject(transient_data,
