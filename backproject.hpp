@@ -91,7 +91,7 @@ xt::xarray<float> backproject(
 
     if (!is_confocal)
     {
-// Calculate laser-wall distances
+        // Calculate laser-wall distances
 #pragma omp parallel for
         for (int32_t lx = 0; lx < (int)camera_grid_points[0]; lx++)
         {
@@ -327,6 +327,7 @@ xt::xarray<float> gpu_backproject(
     }
 
     xt::xarray<float> transient_chunk;
+    // TODO: Fill with zeroes if max_T_index > T
     if (is_confocal)
     {
         if (assume_row_major)
@@ -370,7 +371,7 @@ xt::xarray<float> gpu_backproject(
         total_transient_size *= d;
     }
 
-    t0 = t0 + ((float) min_T_index) / deltaT;
+    t0 = t0 + ((float) min_T_index) * deltaT;
     std::cout << " Done!" << std::endl;
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
     std::vector<uint32_t> voxels_per_side_vec = {voxels_per_side, voxels_per_side, voxels_per_side};

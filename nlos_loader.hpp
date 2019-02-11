@@ -131,7 +131,7 @@ class NLOSData {
         int rank = dataspace.getSimpleExtentNdims();
         std::vector<hsize_t> dimensions(rank);
         dataspace.getSimpleExtentDims(dimensions.data(), nullptr);
-        size_t bounce_axis = row_major ? 4 : 2;
+        size_t bounce_axis = row_major ? rank - 3 : 2;
         hsize_t num_elements = 1;
         for (int i = 0; i < rank; i++) {
             // Account only for the chosen bounces
