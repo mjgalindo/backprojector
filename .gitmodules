@@ -4,3 +4,9 @@
 [submodule "xtensor"]
 	path = xtensor
 	url = https://github.com/QuantStack/xtensor
+[submodule "pybind11"]
+	path = pybind11
+	url = https://github.com/pybind/pybind11
+[submodule "xtensor-python"]
+	path = xtensor-python
+	url = https://github.com/QuantStack/xtensor-python

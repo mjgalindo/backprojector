@@ -181,8 +181,8 @@ xt::xarray<float> gpu_backproject(
     float deltaT,
     bool is_confocal,
     const xt::xarray<float> &volume_position,
-    float volume_size,
-    uint32_t voxels_per_side,
+    const xt::xarray<float> &volume_size,
+    xt::xarray<uint32_t> voxels_per_side,
     bool assume_row_major = false)
 {
     auto tdata_shape = transient_data.shape();
@@ -239,7 +239,8 @@ xt::xarray<float> gpu_backproject(
         }
         float laser_grid_diagonal = distance(las_min_point, las_max_point);
         float camera_grid_diagonal = distance(cam_min_point, cam_max_point);
-        float voxel_volume_diagonal = sqrt(2 * (volume_size * volume_size));
+        float max_size = xt::amax(volume_size)[0];
+        float voxel_volume_diagonal = sqrt(2 * (max_size * max_size));
         float min_distance = distance(laser_position, laser_grid_center) - laser_grid_diagonal / 2 +
                              2 * (distance(laser_grid_center, volume_position) - voxel_volume_diagonal / 2) +
                              distance(camera_position, camera_grid_center) - camera_grid_diagonal / 2;
@@ -309,10 +310,10 @@ xt::xarray<float> gpu_backproject(
     }
 
     xt::xarray<float> volume_zero_pos = volume_position - volume_size / 2;
-    float voxel_size = volume_size / (voxels_per_side - 1);
-    if (voxels_per_side == 1)
-        voxel_size = volume_size;
-    xt::xarray<float> voxel_inc{voxel_size, voxel_size, voxel_size};
+    xt::xarray<float> voxel_inc = volume_size / (voxels_per_side - 1);
+    for (uint32_t i = 0; i < 3; i++)
+        if (voxels_per_side[i] == 1)
+            voxel_inc[i] = volume_size[i];
 
     // Copy all the necessary information to the device
 
@@ -370,12 +371,11 @@ xt::xarray<float> gpu_backproject(
     {
         total_transient_size *= d;
     }
-
     t0 = t0 + ((float) min_T_index) * deltaT;
     std::cout << " Done!" << std::endl;
+    
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
-    std::vector<uint32_t> voxels_per_side_vec = {voxels_per_side, voxels_per_side, voxels_per_side};
-    xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side_vec);
+    xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side);
     call_cuda_backprojection(transient_chunk.data(),
                              total_transient_size,
                              chunkedT,
@@ -383,7 +383,7 @@ xt::xarray<float> gpu_backproject(
                              camera_position.data(),
                              laser_position.data(),
                              voxel_volume.data(),
-                             voxels_per_side_vec.data(),
+                             voxels_per_side.data(),
                              volume_zero_pos.data(),
                              voxel_inc.data(),
                              t0,

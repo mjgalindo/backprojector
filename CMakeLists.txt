@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 
 project(backprojector LANGUAGES CXX CUDA)
 
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 set (CMAKE_CXX_EXTENSIONS OFF)
 set(CUDA_COMPUTE_CAPABILITY 30 CACHE NUMBER "Cuda compute capability for the build")
 
@@ -22,6 +23,17 @@ find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 target_include_directories(backprojector PRIVATE ${HDF5_INCLUDE_DIRS} xtl/include xtensor/include)
 target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX ${HDF5_LIBRARIES} cudabp_static)
+
+find_package(NumPy REQUIRED)
+if (NUMPY_FOUND)
+    message("Python bindings will be built")
+    add_subdirectory(pybind11)
+    pybind11_add_module(nlosbpy nlosbpy.cpp)
+    target_compile_features(nlosbpy PUBLIC cxx_std_14)
+    target_include_directories(nlosbpy PRIVATE ${NUMPY_INCLUDE_DIRS} xtl/include xtensor/include xtensor-python/include)
+    target_link_libraries(nlosbpy PRIVATE OpenMP::OpenMP_CXX cudabp)
+    install(TARGETS nlosbpy DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+endif(NUMPY_FOUND)
 
 install(TARGETS backprojector DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 install(TARGETS cudabp DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
