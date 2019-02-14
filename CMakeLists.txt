@@ -22,7 +22,13 @@ target_compile_options(cudabp_static PRIVATE $<$<CONFIG:Debug>:-G> -gencode arch
 find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 target_include_directories(backprojector PRIVATE ${HDF5_INCLUDE_DIRS} xtl/include xtensor/include)
-target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX ${HDF5_LIBRARIES} cudabp_static)
+if (WIN32)
+    STRING(REGEX REPLACE "(.+)/.+.lib;.+" "\\1" HDF5_LIBRARY_DIR "${HDF5_LIBRARIES}")
+    target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX cudabp_static 
+        "${HDF5_LIBRARY_DIR}/libhdf5.lib;${HDF5_LIBRARY_DIR}/libhdf5_cpp.lib;${HDF5_LIBRARY_DIR}/libzlib.lib;${HDF5_LIBRARY_DIR}/libszip.lib")
+else()
+    target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX ${HDF5_LIBRARIES} cudabp_static)
+endif(WIN32)
 
 find_package(NumPy REQUIRED)
 if (NUMPY_FOUND)

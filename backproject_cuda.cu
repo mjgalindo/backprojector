@@ -4,7 +4,9 @@
 #include <iostream>
 #include <chrono>
 
-// #include <helper_cuda.h>
+#ifdef _WIN32
+#define MAKE_DLL_EXPORT __declspec(dllexport)
+#endif
 #include "backproject_cuda.hpp"
 
 __device__
@@ -127,7 +129,6 @@ void cuda_backprojection_impl(float *transient_data,
 	}
     __syncthreads();
 }
-
 
 void call_cuda_backprojection(const float* transient_chunk,
                               uint32_t transient_size, uint32_t T,
