@@ -156,7 +156,7 @@ int main(int argc, const char *argv[])
     {
         transient_data = xt::view(data.data, 0, xt::all(), 0, xt::all());
     }
-
+    
     xt::xarray<float> volume;
 
     if (use_cpu)

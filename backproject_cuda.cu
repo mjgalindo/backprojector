@@ -223,6 +223,11 @@ void call_cuda_backprojection(const float* transient_chunk,
 		}
 	}
 
+	#ifdef _WIN32
+	// Since windows' watchdog is very cautious, we use very small batches.
+	minGridSize = 16;
+	#endif
+
 	std::vector<uint32_t> kernel_voxels(minGridSize * minGridSize * minGridSize * 3);
 	for (int x = 0; x < minGridSize; x++)
 	for (int y = 0; y < minGridSize; y++)

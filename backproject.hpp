@@ -373,7 +373,7 @@ xt::xarray<float> gpu_backproject(
     }
     t0 = t0 + ((float) min_T_index) * deltaT;
     std::cout << " Done!" << std::endl;
-    
+
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
     xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side);
     call_cuda_backprojection(transient_chunk.data(),
