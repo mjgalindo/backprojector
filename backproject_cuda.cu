@@ -270,6 +270,9 @@ void call_cuda_backprojection(const float* transient_chunk,
 			deltaT_gpu,
 			voxels_per_side_gpu,
 			kernel_voxels_gpu);
+			#ifdef _WIN32
+			cudaDeviceSynchronize();
+			#endif
 	}
 	cudaDeviceSynchronize();
 	auto end = std::chrono::steady_clock::now();

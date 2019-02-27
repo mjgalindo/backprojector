@@ -23,7 +23,7 @@ void save_volume(const std::string &output_file,
     proplist.setChunk(chunks.size(), chunks.data());
 
     DataSpace fspace(fdim.size(), fdim.data());
-    DataSet dataset = file.createDataSet("voxel_volume", PredType::NATIVE_FLOAT, fspace, proplist);
+    DataSet dataset = file.createDataSet("voxelVolume", PredType::NATIVE_FLOAT, fspace, proplist);
     dataset.write(volume.data(), PredType::NATIVE_FLOAT);
 }
 
