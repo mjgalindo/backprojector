@@ -17,6 +17,11 @@
 #include <xtensor/xfunction.hpp>
 #include <xtensor/xview.hpp>
 #include <xtensor/xmath.hpp>
+
+#include "xtensor/xfixed.hpp"
+#include "xtensor/xnoalias.hpp"
+#include "xtensor/xstrided_view.hpp"
+#include "xtensor/xtensor.hpp"
 #define array_type xt::xarray
 #else
 template <typename T>
@@ -138,7 +143,7 @@ class NLOSData {
             if (i == bounce_axis) num_elements *= bounces.size();
             else num_elements *= dimensions[i];
         }
-        T *buff = (T*) new uint32_t[num_elements*sizeof(T)];
+        T *buff = (T*) new uint8_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
         {
             std::vector<hsize_t> offset(rank, 0);   // hyperslab offset in the file
@@ -162,7 +167,11 @@ class NLOSData {
         #ifdef USE_XTENSOR
         array_type<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
         if (sum_bounces && bounces.size() > 1)
+        {
+            dimensions[bounce_axis] = 1;
             retval = xt::sum(retval, {bounce_axis});
+            retval.reshape(dimensions);
+        }
 		#else
         array_type<T> retval;
         retval.buff = buff;
