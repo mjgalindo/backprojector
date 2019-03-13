@@ -11,14 +11,6 @@
 #include <iostream>
 namespace py = pybind11;
 
-
-void doshapeprint(const xt::pyarray<float>& thing)
-{
-    for (auto c: thing.shape())
-    std::cout << c << ' ';
-    std::cout << std::endl;
-}
-
 inline xt::pyarray<float> backproject(
     const xt::pyarray<float> &transient_data,
     const xt::pyarray<float> &camera_grid_positions,
