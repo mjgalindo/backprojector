@@ -14,7 +14,7 @@ void save_volume(const std::string &output_file,
     std::vector<hsize_t> fdim = {shape[0], shape[1], shape[2]};
     std::vector<hsize_t> start = {0, 0, 0};
     std::vector<hsize_t> count = {shape[0], shape[1], shape[2]};
-    std::vector<hsize_t> chunks = {shape[0], shape[1], shape[2]};
+    std::vector<hsize_t> chunks = {32, 32, 32};
 
     float fillvalue = NAN;
     DSetCreatPropList proplist;
