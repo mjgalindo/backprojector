@@ -20,6 +20,7 @@ namespace bp
 template <typename V1, typename V2>
 float distance(const V1 &p1, const V2 &p2)
 {
+    if (p1.size() < 3 || p2.size() < 3) return 0.0;
     std::array<float, 3> tmp;
     for (int i = 0; i < 3; i++)
     {
@@ -380,8 +381,8 @@ xt::xarray<float> gpu_backproject(
                              total_transient_size,
                              chunkedT,
                              scanned_pairs,
-                             camera_position.data(),
-                             laser_position.data(),
+                             camera_position.size() > 1 ? camera_position.data() : nullptr,
+                             laser_position.size() > 1 ? laser_position.data() : nullptr,
                              voxel_volume.data(),
                              voxels_per_side.data(),
                              volume_zero_pos.data(),

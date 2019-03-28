@@ -146,8 +146,8 @@ class NLOSData {
         T *buff = (T*) new uint8_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
         {
-            std::vector<hsize_t> offset(rank, 0);   // hyperslab offset in the file
-            std::vector<hsize_t> count(rank, 0);    // size of the hyperslab in the file
+            std::vector<hsize_t> offset(rank, 0);
+            std::vector<hsize_t> count(rank, 0);
             for (int i = 0; i < rank; i++)
                 count[i] = dimensions[i];
             count[bounce_axis] = 1;
@@ -160,7 +160,7 @@ class NLOSData {
             }
         }
         dimensions[bounce_axis] = bounces.size();
-
+        
         H5::DataSpace mspace = H5::DataSpace(rank, dimensions.data());
 
         dataset.read(buff, ptype, mspace, dataspace);

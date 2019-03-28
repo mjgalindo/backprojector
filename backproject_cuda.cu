@@ -12,6 +12,7 @@
 __device__
 float distance(const float *p1, const float *p2) 
 {
+	if (p1 == nullptr || p2 == nullptr) return 0.0;
     float buff[3]; 
     for (int i = 0; i < 3; i++)
     {
@@ -161,13 +162,19 @@ void call_cuda_backprojection(const float* transient_chunk,
 	cudaMalloc((void **)&scanned_pairs_gpu, num_pairs * sizeof(pointpair));
 	cudaMemcpy(scanned_pairs_gpu, scanned_pairs.data(), num_pairs * sizeof(pointpair), cudaMemcpyHostToDevice);
 	/// float *camera_pos,
-	float *camera_pos_gpu;
-	cudaMalloc((void **)&camera_pos_gpu, 3 * sizeof(float));
-	cudaMemcpy(camera_pos_gpu, camera_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
+	float *camera_pos_gpu = nullptr;
+	if (camera_position != nullptr)
+	{
+		cudaMalloc((void **)&camera_pos_gpu, 3 * sizeof(float));
+		cudaMemcpy(camera_pos_gpu, camera_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
+	}
 	/// float *laser_pos,
-	float *laser_pos_gpu;
-	cudaMalloc((void **)&laser_pos_gpu, 3 * sizeof(float));
-	cudaMemcpy(laser_pos_gpu, laser_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
+	float *laser_pos_gpu = nullptr;
+	if (laser_position != nullptr)
+	{
+		cudaMalloc((void **)&laser_pos_gpu, 3 * sizeof(float));
+		cudaMemcpy(laser_pos_gpu, laser_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
+	}
 	/// float *voxel_volume,
 	// Initialize voxel volume for the CPU
 	float *voxel_volume_gpu;
@@ -245,7 +252,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
 	dim3 threads_in_block(blockSize, 1, 1);
-	uint32_t number_of_runs = std::ceil(voxels_per_side[0] / (float) minGridSize);
+	uint32_t number_of_runs = std::ceil(std::max(std::max(voxels_per_side[0], voxels_per_side[1]), voxels_per_side[2]) / (float) minGridSize);
 	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
 
 	std::cout << "Backprojecting on the GPU using the \"optimal\" configuration" << std::endl;
@@ -270,9 +277,9 @@ void call_cuda_backprojection(const float* transient_chunk,
 			deltaT_gpu,
 			voxels_per_side_gpu,
 			kernel_voxels_gpu);
-			#ifdef _WIN32
+			//#ifdef _WIN32
 			cudaDeviceSynchronize();
-			#endif
+			//#endif
 	}
 	cudaDeviceSynchronize();
 	auto end = std::chrono::steady_clock::now();
