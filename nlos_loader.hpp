@@ -101,7 +101,7 @@ class NLOSData {
         for (int i = 0; i < rank; i++) {
             num_elements *= dimensions[i];
         }
-        T *buff = (T*) new uint32_t[num_elements*sizeof(T)];
+        T *buff = (T*) new uint8_t[num_elements*sizeof(T)];
         auto ptype = H5::PredType::NATIVE_FLOAT;
         switch(type_class) {
             case H5T_INTEGER:

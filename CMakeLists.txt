@@ -4,7 +4,7 @@ project(backprojector LANGUAGES CXX CUDA)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 set (CMAKE_CXX_EXTENSIONS OFF)
-set(CUDA_COMPUTE_CAPABILITY 30 CACHE NUMBER "Cuda compute capability for the build")
+set(CUDA_COMPUTE_CAPABILITY 52 CACHE STRING "Cuda compute capability for the build")
 
 add_executable(backprojector main.cpp)
 target_compile_features(backprojector PUBLIC cxx_std_14)

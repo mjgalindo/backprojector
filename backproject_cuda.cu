@@ -2,18 +2,21 @@
 #include <chrono>
 #include <math.h>
 #include <iostream>
+#include <thread>
 #include <chrono>
 
 #ifdef _WIN32
 #define MAKE_DLL_EXPORT __declspec(dllexport)
 #endif
 #include "backproject_cuda.hpp"
+#include "tqdm.h"
 
 __device__
 float distance(const float *p1, const float *p2) 
 {
-	if (p1 == nullptr || p2 == nullptr) return 0.0;
-    float buff[3]; 
+	// Checking if either is a nullptr reduces performance dramatically!
+	// if (p1 == nullptr || p2 == nullptr) return 0.0;
+    float buff[3];
     for (int i = 0; i < 3; i++)
     {
         buff[i] = p1[i] - p2[i];
@@ -72,52 +75,49 @@ void cuda_backprojection_impl(float *transient_data,
 						xyz[1] * voxels_per_side[2] + 
 						xyz[2];
 	
+	extern __shared__ double local_array[];
+	double& radiance_sum = local_array[threadIdx.x];
+	radiance_sum = 0.0;
+
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
-	if (voxel_volume[voxel_id] > 0.0)
+	if (voxel_volume[voxel_id] == 0.0)
 	{
-		return;
+		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
+								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
+								  volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
+
+		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
+		{
+			uint32_t pair_index = i * blockDim.x + threadIdx.x;
+			
+			const pointpair& pair = scanned_pairs[pair_index];
+
+			// From the laser to the wall
+			float laser_wall_distance = distance(laser_pos, pair.laser_point);
+			
+			// From the wall to the current voxel
+			float laser_point_voxel_distance = distance(pair.laser_point, voxel_position);
+			
+			// From the wall back to the camera
+			float cam_wall_distance = distance(pair.cam_point, camera_pos);
+			// From the object back to the wall
+			float voxel_cam_point_distance = distance(voxel_position, pair.cam_point);
+
+			// Radiance gets attenuated with the square of traveled distance between bounces
+			/*float distance_attenuation = laser_wall_distance * laser_wall_distance +
+										laser_point_voxel_distance * laser_point_voxel_distance +
+										voxel_cam_point_distance * voxel_cam_point_distance +
+										cam_wall_distance * cam_wall_distance;*/
+			// TODO: Cosine attenuation due to Lambert's law
+			
+			float total_distance = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
+			
+			uint32_t time_index = round((total_distance - *t0) / *deltaT);
+			uint32_t tdindex = pair_index * *T + time_index;
+
+			radiance_sum += transient_data[tdindex]; // * distance_attenuation;
+		}
 	}
-
-    extern __shared__ double local_array[];
-    double& radiance_sum = local_array[threadIdx.x];
-    radiance_sum = 0.0;
-
-    float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
-                              volume_zero_pos[1]+voxel_inc[1]*xyz[1],
-                              volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
-
-    for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
-    {
-        uint32_t pair_index = i * blockDim.x + threadIdx.x;
-           
-        const pointpair& pair = scanned_pairs[pair_index];
-
-        // From the laser to the wall
-        float laser_wall_distance = distance(laser_pos, pair.laser_point);
-        
-        // From the wall to the current voxel
-        float laser_point_voxel_distance = distance(pair.laser_point, voxel_position);
-        
-        // From the wall back to the camera
-        float cam_wall_distance = distance(pair.cam_point, camera_pos);
-        // From the object back to the wall
-        float voxel_cam_point_distance = distance(voxel_position, pair.cam_point);
-
-        // Radiance gets attenuated with the square of traveled distance between bounces
-        /*float distance_attenuation = laser_wall_distance * laser_wall_distance +
-                                     laser_point_voxel_distance * laser_point_voxel_distance +
-                                     voxel_cam_point_distance * voxel_cam_point_distance +
-                                     cam_wall_distance * cam_wall_distance;*/
-        // TODO: Cosine attenuation due to Lambert's law
-        
-        float total_distance = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
-        
-        uint32_t time_index = round((total_distance - *t0) / *deltaT);
-        uint32_t tdindex = pair_index * *T + time_index;
-
-        radiance_sum += transient_data[tdindex]; // * distance_attenuation;
-    }
-
     __syncthreads();
 	if (threadIdx.x == 0)
 	{
@@ -219,7 +219,6 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 	int blockSize, minGridSize;
 	cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, cuda_backprojection_impl, sizeof(double), 0); 
-
 	{
 		cudaError_t error = cudaGetLastError();
 		if (error != cudaSuccess)
@@ -230,10 +229,11 @@ void call_cuda_backprojection(const float* transient_chunk,
 		}
 	}
 
-	#ifdef _WIN32
-	// Since windows' watchdog is very cautious, we use very small batches.
+	// Limit blocksize to the number of pairs (or else backprojection will fail!)
+	blockSize = std::min({(uint32_t) blockSize, num_pairs, 1024u});
+
+	// Force a smaller grid size to make each kernel run very short.
 	minGridSize = 16;
-	#endif
 
 	std::vector<uint32_t> kernel_voxels(minGridSize * minGridSize * minGridSize * 3);
 	for (int x = 0; x < minGridSize; x++)
@@ -261,6 +261,8 @@ void call_cuda_backprojection(const float* transient_chunk,
 	std::cout << "# Kernel calls: " << number_of_runs << std::endl;
 	
 	auto start = std::chrono::steady_clock::now();
+	tqdm bar;
+    bar.set_theme_braille();
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
@@ -277,11 +279,15 @@ void call_cuda_backprojection(const float* transient_chunk,
 			deltaT_gpu,
 			voxels_per_side_gpu,
 			kernel_voxels_gpu);
-			//#ifdef _WIN32
-			cudaDeviceSynchronize();
-			//#endif
+		cudaDeviceSynchronize();
+		bar.progress(r, number_of_runs);
+
+		// Wait for very large volumes this may take too long.
+		if (r > 0 && number_of_runs > 512 && r % (number_of_runs / 8) == 0)
+			std::this_thread::sleep_for(std::chrono::seconds(4));
 	}
 	cudaDeviceSynchronize();
+	bar.finish();
 	auto end = std::chrono::steady_clock::now();
 	std::cout << "Backprojection took "
 		<< std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()

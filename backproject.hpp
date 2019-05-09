@@ -206,6 +206,8 @@ xt::xarray<float> gpu_backproject(
 
     const uint32_t num_laser_points = laser_grid_points[0] * laser_grid_points[1];
     const uint32_t num_camera_points = camera_grid_points[0] * camera_grid_points[1];
+    const uint32_t num_non_nan_laser_points = xt::sum(!xt::isnan(xt::view(laser_grid_positions, xt::all(), xt::all(), 0)))[0];
+    const uint32_t num_non_nan_camera_points = xt::sum(!xt::isnan(xt::view(camera_grid_positions, xt::all(), xt::all(), 0)))[0];
 
     std::vector<pointpair> scanned_pairs;
 
@@ -214,8 +216,9 @@ xt::xarray<float> gpu_backproject(
         sum_plane = {0, 1};
     else
         sum_plane = {1, 2};
-    xt::xarray<float> laser_grid_center = xt::sum(laser_grid_positions, sum_plane) / num_laser_points;
-    xt::xarray<float> camera_grid_center = xt::sum(camera_grid_positions, sum_plane) / num_camera_points;
+    
+    xt::xarray<float> laser_grid_center = xt::nansum(laser_grid_positions, sum_plane) / num_non_nan_laser_points;
+    xt::xarray<float> camera_grid_center = xt::nansum(camera_grid_positions, sum_plane) / num_non_nan_camera_points;
 
     // Get the minimum and maximum distance traveled to transfer as little memory to the GPU as possible
     int min_T_index = 0, max_T_index = 0;
@@ -241,18 +244,18 @@ xt::xarray<float> gpu_backproject(
         float laser_grid_diagonal = distance(las_min_point, las_max_point);
         float camera_grid_diagonal = distance(cam_min_point, cam_max_point);
         float max_size = xt::amax(volume_size)[0];
-        float voxel_volume_diagonal = sqrt(2 * (max_size * max_size));
-        float min_distance = distance(laser_position, laser_grid_center) - laser_grid_diagonal / 2 +
+        float voxel_volume_diagonal = sqrt(sqrt(2 * (max_size * max_size)) + max_size * max_size);
+        float min_distance = abs(distance(laser_position, laser_grid_center) - laser_grid_diagonal / 2 +
                              2 * (distance(laser_grid_center, volume_position) - voxel_volume_diagonal / 2) +
-                             distance(camera_position, camera_grid_center) - camera_grid_diagonal / 2;
-        float max_distance = distance(laser_position, laser_grid_center) + laser_grid_diagonal / 2 +
+                             distance(camera_position, camera_grid_center) - camera_grid_diagonal / 2);
+        float max_distance = abs(distance(laser_position, laser_grid_center) + laser_grid_diagonal / 2 +
                              2 * (distance(laser_grid_center, volume_position) + voxel_volume_diagonal / 2) +
-                             distance(camera_position, camera_grid_center) + camera_grid_diagonal / 2;
+                             distance(camera_position, camera_grid_center) + camera_grid_diagonal / 2);
         // Adjust distances by the minimum recorded distance.
         min_distance -= t0;
         max_distance -= t0;
-        min_T_index = std::max(int(floor(min_distance / deltaT)) - 50, 0);
-        max_T_index = std::min(int(ceil(max_distance / deltaT)) + 50, (int)T);
+        min_T_index = std::max((int)floor(min_distance / deltaT) - 50, 0);
+        max_T_index = std::min((int)ceil(max_distance / deltaT) + 50, (int)T);
     }
 
     // Gather the captured pairs into a single vector to pass to the GPU.
@@ -366,6 +369,7 @@ xt::xarray<float> gpu_backproject(
                         }
         }
     }
+    transient_chunk = xt::nan_to_num(transient_chunk);
 
     uint32_t total_transient_size = 1;
     for (const auto &d : transient_chunk.shape())
