@@ -281,10 +281,6 @@ void call_cuda_backprojection(const float* transient_chunk,
 			kernel_voxels_gpu);
 		cudaDeviceSynchronize();
 		bar.progress(r, number_of_runs);
-
-		// Wait for very large volumes this may take too long.
-		if (r > 0 && number_of_runs > 512 && r % (number_of_runs / 8) == 0)
-			std::this_thread::sleep_for(std::chrono::seconds(4));
 	}
 	cudaDeviceSynchronize();
 	bar.finish();
