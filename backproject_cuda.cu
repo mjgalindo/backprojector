@@ -230,7 +230,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	}
 
 	// Limit blocksize to the number of pairs (or else backprojection will fail!)
-	blockSize = std::min({(uint32_t) blockSize, num_pairs, 1024u});
+	blockSize = std::min({(uint32_t) blockSize, num_pairs, 256u});
 
 	// Force a smaller grid size to make each kernel run very short.
 	minGridSize = 16;
@@ -262,7 +262,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	
 	auto start = std::chrono::steady_clock::now();
 	tqdm bar;
-    bar.set_theme_braille();
+	bar.set_theme_braille();
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
