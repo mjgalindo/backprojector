@@ -254,8 +254,8 @@ xt::xarray<float> gpu_backproject(
         // Adjust distances by the minimum recorded distance.
         min_distance -= t0;
         max_distance -= t0;
-        min_T_index = std::max((int)floor(min_distance / deltaT) - 50, 0);
-        max_T_index = std::min((int)ceil(max_distance / deltaT) + 50, (int)T);
+        min_T_index = std::max((int)floor(min_distance / deltaT) - 100, 0);
+        max_T_index = std::min((int)ceil(max_distance / deltaT) + 100, (int)T);
     }
 
     // Gather the captured pairs into a single vector to pass to the GPU.
