@@ -25,6 +25,65 @@ float distance(const float *p1, const float *p2)
     return norm3df(buff[0], buff[1], buff[2]);
 }
 
+__forceinline__ __device__
+void compute_distance(const float * voxel_position,
+					   const float *laser_pos, 
+					   const float *camera_pos, 
+					   const pointpair * pair,
+					   float * distance_out)
+{
+	// From the laser to the wall
+	float laser_wall_distance = distance(laser_pos, pair->laser_point);
+	// From the wall to the current voxel
+	float laser_point_voxel_distance = distance(pair->laser_point, voxel_position);
+	// From the wall back to the camera
+	float cam_wall_distance = distance(pair->cam_point, camera_pos);
+	// From the object back to the wall
+	float voxel_cam_point_distance = distance(voxel_position, pair->cam_point);
+	
+	*distance_out = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
+}
+
+__forceinline__ __device__
+void advance_block(const uint32_t *voxels_per_side, 
+				   uint32_t * kernel_voxels, 
+				   uint32_t & block_id,
+				   uint32_t * xyz,
+				   uint32_t & voxel_id)
+{
+	// First needs to find the x y z coordinates of the voxel
+	block_id = (blockIdx.x * gridDim.y * gridDim.z +
+				blockIdx.y * gridDim.z +
+				blockIdx.z) * 3;
+	for (uint32_t i = 0; i < 3; i++)
+		xyz[i] = kernel_voxels[block_id+i]; // , kernel_voxels[block_id+1], kernel_voxels[block_id+2]};
+	
+	// Set the next voxel to be computed by this blockIdx in the next call.
+	// We advance on the Z axis by the dimensions of the kernel, overflowing to the Y axis and 
+	// then to the X axis. This would match row-major access to the 3D array.
+	__syncthreads();
+	if (threadIdx.x == 0)
+	{
+		uint32_t* next_xyz = &kernel_voxels[block_id];
+		next_xyz[2] = xyz[2] + gridDim.z;
+		if (next_xyz[2] >= voxels_per_side[2])
+		{
+			next_xyz[2] = next_xyz[2] % voxels_per_side[2];
+			next_xyz[1] = next_xyz[1] + gridDim.y;
+			if (next_xyz[1] >= voxels_per_side[1])
+			{
+				next_xyz[1] = next_xyz[1] % voxels_per_side[1];
+				next_xyz[0] = next_xyz[0] + gridDim.x;
+			}
+		}
+	}
+	__syncthreads();
+	voxel_id = xyz[0] * voxels_per_side[1] * voxels_per_side[2] +
+			   xyz[1] * voxels_per_side[2] + 
+			   xyz[2];
+}
+
+
 __global__
 void cuda_backprojection_impl(float *transient_data,
                               uint32_t *T,
@@ -40,47 +99,19 @@ void cuda_backprojection_impl(float *transient_data,
 							  uint32_t *voxels_per_side,
 							  uint32_t *kernel_voxels)
 {
-	// First needs to find the x y z coordinates of the voxel
-	uint32_t block_id = (blockIdx.x * gridDim.y * gridDim.z +
-						 blockIdx.y * gridDim.z +
-						 blockIdx.z) * 3;
-	uint32_t xyz[3] = {kernel_voxels[block_id], kernel_voxels[block_id+1], kernel_voxels[block_id+2]};
+	uint32_t block_id, voxel_id, xyz[3];
+	advance_block(voxels_per_side, kernel_voxels, block_id, xyz, voxel_id);
 
 	// If the block is outside the volume don't do anything
-	if (xyz[0] >= voxels_per_side[0] || xyz[1] >= voxels_per_side[1] || xyz[2] >= voxels_per_side[2])
+	if ((xyz[0] >= voxels_per_side[0]) | (xyz[1] >= voxels_per_side[1]) | (xyz[2] >= voxels_per_side[2]))
 		return;
-	
-    __syncthreads();
-	if (threadIdx.x == 0)
-	{
-		// Set the next voxel to be computed by this blockIdx in the next call.
-		// We advance on the Z axis by the dimensions of the kernel, overflowing to the Y axis and 
-		// then to the X axis. This would match row-major access to the 3D array.
-		uint32_t* next_xyz = &kernel_voxels[block_id];
-		next_xyz[2] = xyz[2] + gridDim.z;
-		if (next_xyz[2] >= voxels_per_side[2])
-		{
-			next_xyz[2] = next_xyz[2] % voxels_per_side[2];
-			next_xyz[1] = next_xyz[1] + gridDim.y;
-			if (next_xyz[1] >= voxels_per_side[1])
-			{
-				next_xyz[1] = next_xyz[1] % voxels_per_side[1];
-				next_xyz[0] = next_xyz[0] + gridDim.x;
-			}
-		}
-	}
-    __syncthreads();
-	
-	uint32_t voxel_id = xyz[0] * voxels_per_side[1] * voxels_per_side[2] +
-						xyz[1] * voxels_per_side[2] + 
-						xyz[2];
 	
 	extern __shared__ double local_array[];
 	double& radiance_sum = local_array[threadIdx.x];
 	radiance_sum = 0.0;
 
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
-	if (voxel_volume[voxel_id] == 0.0)
+	//if (voxel_volume[voxel_id] == 0.0)
 	{
 		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
 								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
@@ -89,29 +120,8 @@ void cuda_backprojection_impl(float *transient_data,
 		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
 		{
 			uint32_t pair_index = i * blockDim.x + threadIdx.x;
-			
-			const pointpair& pair = scanned_pairs[pair_index];
-
-			// From the laser to the wall
-			float laser_wall_distance = distance(laser_pos, pair.laser_point);
-			
-			// From the wall to the current voxel
-			float laser_point_voxel_distance = distance(pair.laser_point, voxel_position);
-			
-			// From the wall back to the camera
-			float cam_wall_distance = distance(pair.cam_point, camera_pos);
-			// From the object back to the wall
-			float voxel_cam_point_distance = distance(voxel_position, pair.cam_point);
-
-			// Radiance gets attenuated with the square of traveled distance between bounces
-			/*float distance_attenuation = laser_wall_distance * laser_wall_distance +
-										laser_point_voxel_distance * laser_point_voxel_distance +
-										voxel_cam_point_distance * voxel_cam_point_distance +
-										cam_wall_distance * cam_wall_distance;*/
-			// TODO: Cosine attenuation due to Lambert's law
-			
-			float total_distance = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
-			
+			float total_distance;
+			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
 			uint32_t time_index = round((total_distance - *t0) / *deltaT);
 			uint32_t tdindex = pair_index * *T + time_index;
 
