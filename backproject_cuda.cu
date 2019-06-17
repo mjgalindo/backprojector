@@ -111,7 +111,7 @@ void cuda_backprojection_impl(float *transient_data,
 	radiance_sum = 0.0;
 
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
-	//if (voxel_volume[voxel_id] == 0.0)
+	if (voxel_volume[voxel_id] == 0.0)
 	{
 		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
 								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
