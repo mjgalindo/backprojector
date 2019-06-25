@@ -5,6 +5,11 @@
 #include <thread>
 #include <chrono>
 
+#include <thrust/device_vector.h>
+#include <thrust/copy.h>
+#include <thrust/fill.h>
+#include <cuComplex.h>
+
 #ifdef _WIN32
 #define MAKE_DLL_EXPORT __declspec(dllexport)
 #endif
@@ -132,11 +137,66 @@ void cuda_backprojection_impl(float *transient_data,
 	if (threadIdx.x == 0)
 	{
 		// Compute the reduction in a single thread and write it
-		double total_radiance = 0.0;
-		for (int i = 0; i < blockDim.x; i++) {
-			total_radiance += local_array[i];
+		for (int i = 1; i < blockDim.x; i++) {
+			local_array[0] += local_array[i];
 		}
-		voxel_volume[voxel_id] = (float) total_radiance;
+		voxel_volume[voxel_id] = (float) local_array[0];
+	}
+    __syncthreads();
+}
+
+__global__
+void cuda_complex_backprojection_impl(cuComplex *transient_data,
+									  uint32_t *T,
+									  uint32_t *num_pairs,
+									  pointpair *scanned_pairs,
+									  float *camera_pos,
+									  float *laser_pos,
+									  float *voxel_volume,
+									  float *volume_zero_pos,
+									  float *voxel_inc,
+									  float *t0,
+									  float *deltaT,
+									  uint32_t *voxels_per_side,
+									  uint32_t *kernel_voxels)
+{
+	uint32_t block_id, voxel_id, xyz[3];
+	advance_block(voxels_per_side, kernel_voxels, block_id, xyz, voxel_id);
+
+	// If the block is outside the volume don't do anything
+	if ((xyz[0] >= voxels_per_side[0]) | (xyz[1] >= voxels_per_side[1]) | (xyz[2] >= voxels_per_side[2]))
+		return;
+		
+	extern __shared__ cuDoubleComplex local_array2[];
+	cuDoubleComplex& radiance_sum = local_array2[threadIdx.x];
+	radiance_sum = make_cuDoubleComplex(0.0, 0.0);
+
+	// Don't run if the current voxel is not 0. This means the current block has already finished.
+	if (voxel_volume[voxel_id] == 0.0)
+	{
+		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
+								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
+								  volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
+
+		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
+		{
+			uint32_t pair_index = i * blockDim.x + threadIdx.x;
+			float total_distance;
+			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
+			uint32_t time_index = round((total_distance - *t0) / *deltaT);
+			uint32_t tdindex = pair_index * *T + time_index;
+
+			radiance_sum = cuCadd(radiance_sum, cuComplexFloatToDouble(transient_data[tdindex])); // * distance_attenuation;
+		}
+	}
+    __syncthreads();
+	if (threadIdx.x == 0)
+	{
+		// Compute the reduction in a single thread and write it
+		for (int i = 1; i < blockDim.x; i++) {
+			local_array2[0] = cuCadd(local_array2[0], local_array2[i]);
+		}
+		voxel_volume[voxel_id] = cuCreal(local_array2[0]);
 	}
     __syncthreads();
 }
@@ -153,70 +213,21 @@ void call_cuda_backprojection(const float* transient_chunk,
                               float t0,
                               float deltaT)
 {
-    // Copy all the necessary information to the device
-	/// float *transient_data,
-	float *transient_chunk_gpu;
-	cudaMalloc((void **)&transient_chunk_gpu, transient_size*sizeof(float));
-    cudaMemcpy(transient_chunk_gpu, transient_chunk, transient_size*sizeof(float), cudaMemcpyHostToDevice);
-	/// uint32_t *T,
-	uint32_t *T_gpu;
-	cudaMalloc((void **)&T_gpu, sizeof(uint32_t));
-	cudaMemcpy(T_gpu, &T, sizeof(uint32_t), cudaMemcpyHostToDevice);
-	/// uint32_t *num_pairs
-    uint32_t *num_pairs_gpu;
-    uint32_t num_pairs = scanned_pairs.size();
-	cudaMalloc((void **)&num_pairs_gpu, sizeof(uint32_t));
-	cudaMemcpy(num_pairs_gpu, &num_pairs, sizeof(uint32_t), cudaMemcpyHostToDevice);
-	/// pointpair *scanned_pairs,
-	pointpair *scanned_pairs_gpu;
-	cudaMalloc((void **)&scanned_pairs_gpu, num_pairs * sizeof(pointpair));
-	cudaMemcpy(scanned_pairs_gpu, scanned_pairs.data(), num_pairs * sizeof(pointpair), cudaMemcpyHostToDevice);
-	/// float *camera_pos,
-	float *camera_pos_gpu = nullptr;
-	if (camera_position != nullptr)
-	{
-		cudaMalloc((void **)&camera_pos_gpu, 3 * sizeof(float));
-		cudaMemcpy(camera_pos_gpu, camera_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
-	}
-	/// float *laser_pos,
-	float *laser_pos_gpu = nullptr;
-	if (laser_position != nullptr)
-	{
-		cudaMalloc((void **)&laser_pos_gpu, 3 * sizeof(float));
-		cudaMemcpy(laser_pos_gpu, laser_position, 3 * sizeof(float), cudaMemcpyHostToDevice);
-	}
-	/// float *voxel_volume,
-	// Initialize voxel volume for the CPU
-	float *voxel_volume_gpu;
-	uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
-	cudaMalloc((void **)&voxel_volume_gpu, nvoxels * sizeof(float));
-	cudaMemcpy(voxel_volume_gpu, voxel_volume, nvoxels * sizeof(float), cudaMemcpyHostToDevice);
-	/// float *volume_zero_pos,
-	float *volume_zero_pos_gpu;
-	cudaMalloc((void **)&volume_zero_pos_gpu, 3 * sizeof(float));
-	cudaMemcpy(volume_zero_pos_gpu, volume_zero_pos, 3 * sizeof(float), cudaMemcpyHostToDevice);
-	/// float *voxel_inc,
-	float *voxel_inc_gpu;
-	cudaMalloc((void **)&voxel_inc_gpu, 3 * sizeof(float));
-	cudaMemcpy(voxel_inc_gpu, voxel_inc, 3 * sizeof(float), cudaMemcpyHostToDevice);
-	/// float *t0,
-	float *t0_gpu;
-	cudaMalloc((void **)&t0_gpu, sizeof(float));
-	cudaMemcpy(t0_gpu, &t0, sizeof(float), cudaMemcpyHostToDevice);
-	/// float *deltaT,
-	float *deltaT_gpu;
-	cudaMalloc((void **)&deltaT_gpu, sizeof(float));
-	cudaMemcpy(deltaT_gpu, &deltaT, sizeof(float), cudaMemcpyHostToDevice);
-	/// uint32_t *voxels_per_side,
-	uint32_t *voxels_per_side_gpu;
-	cudaMalloc((void **)&voxels_per_side_gpu, 3 * sizeof(uint32_t));
-    cudaMemcpy(voxels_per_side_gpu, voxels_per_side, 3 * sizeof(uint32_t), cudaMemcpyHostToDevice);
+	thrust::device_vector<float> transient_chunk_gpu(transient_chunk, transient_chunk + transient_size);
+	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
+	uint32_t num_pairs = scanned_pairs.size();
+	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
+	thrust::device_vector<pointpair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
+	thrust::device_vector<float> camera_pos_gpu(camera_position, camera_position + 3);
+	thrust::device_vector<float> laser_pos_gpu(laser_position, laser_position + 3);
+	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
+	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
+	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
+	thrust::device_vector<float> voxel_inc_gpu(voxel_inc, voxel_inc + 3);
+	thrust::device_vector<float> t0_gpu(&t0, &t0 + 1);
+	thrust::device_vector<float> deltaT_gpu(&deltaT, &deltaT + 1);
+	thrust::device_vector<uint32_t> voxels_per_side_gpu(voxels_per_side, voxels_per_side + 3);
 
-	// uint32_t *kernel_voxels
-	
-	// Ideally, we would run {voxels_per_side[0], voxels_per_side[1], voxels_per_side[2]} 
-	// blocks, but windows doesn't like this, so we run many smaller kernels.
-	
 	{
 		cudaError_t error = cudaGetLastError();
 		if (error != cudaSuccess)
@@ -276,19 +287,20 @@ void call_cuda_backprojection(const float* transient_chunk,
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
-		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(double)>>>(transient_chunk_gpu,
-			T_gpu,
-			num_pairs_gpu,
-			scanned_pairs_gpu,
-			camera_pos_gpu,
-			laser_pos_gpu,
-			voxel_volume_gpu,
-			volume_zero_pos_gpu,
-			voxel_inc_gpu,
-			t0_gpu,
-			deltaT_gpu,
-			voxels_per_side_gpu,
-			kernel_voxels_gpu);
+		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(double)>>>(
+			thrust::raw_pointer_cast(&transient_chunk_gpu[0]),
+			thrust::raw_pointer_cast(&T_gpu[0]),
+			thrust::raw_pointer_cast(&num_pairs_gpu[0]),
+			thrust::raw_pointer_cast(&scanned_pairs_gpu[0]),
+			thrust::raw_pointer_cast(&camera_pos_gpu[0]),
+			thrust::raw_pointer_cast(&laser_pos_gpu[0]),
+			thrust::raw_pointer_cast(&voxel_volume_gpu[0]),
+			thrust::raw_pointer_cast(&volume_zero_pos_gpu[0]),
+			thrust::raw_pointer_cast(&voxel_inc_gpu[0]),
+			thrust::raw_pointer_cast(&t0_gpu[0]),
+			thrust::raw_pointer_cast(&deltaT_gpu[0]),
+			thrust::raw_pointer_cast(&voxels_per_side_gpu[0]),
+			thrust::raw_pointer_cast(&kernel_voxels_gpu[0]));
 		cudaDeviceSynchronize();
 		bar.progress(r, number_of_runs);
 	}
@@ -308,19 +320,5 @@ void call_cuda_backprojection(const float* transient_chunk,
 		exit(1);
 	}
 
-	cudaMemcpy(voxel_volume, voxel_volume_gpu, nvoxels * sizeof(float), cudaMemcpyDeviceToHost);
-	
-	cudaFree(transient_chunk_gpu);
-	cudaFree(T_gpu);
-	cudaFree(num_pairs_gpu);
-	cudaFree(scanned_pairs_gpu);
-	cudaFree(camera_pos_gpu);
-	cudaFree(laser_pos_gpu);
-	cudaFree(voxel_volume_gpu);
-	cudaFree(volume_zero_pos_gpu);
-	cudaFree(voxel_inc_gpu);
-	cudaFree(t0_gpu);
-	cudaFree(deltaT_gpu);
-	cudaFree(voxels_per_side_gpu);
-	cudaFree(kernel_voxels_gpu);
+	thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume);
 }
