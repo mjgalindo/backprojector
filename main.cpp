@@ -60,38 +60,38 @@ int main(int argc, const char *argv[])
     args::ArgumentParser parser("NLOS dataset backprojector.", "Takes a NLOS dataset and returns an unfiltered backprojection volume.");
     args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
 
-    args::Positional<std::string> vf_filename(parser, "vf_filename", "The input file name.");
+    args::Positional<std::string> vf_filename(parser, "filename", "The input file name.");
     args::ValueFlag<uint32_t> vf_highest_bounce(parser,
-                                                "vf_highest_bounce",
+                                                "highest_bounce",
                                                 "Maximum bounces to consider in the reconstruction. "
                                                 "Valid values start counting from 3 and are bound to the maximum in the dataset (usually 8, defaults to 3).",
                                                 {'b', "max-bounce"}, 3);
     args::ValueFlag<xt::xarray<int>, ArrayReader<int, 3u>>
         vf_voxel_resolution(parser,
-                            "vf_voxel_resolution",
+                            "voxel_resolution",
                             "Resolution in the XYZ axis of the volume.",
                             {'r', "voxel-resolution"}, {32, 32, 32});
     args::ValueFlag<xt::xarray<float>, ArrayReader<float, 3u>>
         vf_volume_position(parser,
-                           "vf_volume_position",
+                           "volume_position",
                            "Center of the hidden volume. Defaults to the position read from the dataset.",
                            {'c', "volume-position"}, {NAN, NAN, NAN});
     args::ValueFlag<xt::xarray<float>, ArrayReader<float, 3u>>
         vf_volume_size(parser,
-                       "vf_volume_size",
+                       "volume_size",
                        "Axis-aligned size of the volume in XYZ. Defaults to the size read from the dataset.",
                        {'s', "volume-size"}, {NAN, NAN, NAN});
     args::ValueFlag<xt::xarray<float>, ArrayReader<float, 3u>>
         vf_volume_direction(parser,
-                            "vf_volume_direction",
+                            "volume_direction",
                             "NOT IMPLEMENTED!! Direction vector in which the volume will be \"grown\". Defaults to keeping the volume axis aligned.",
                             {'d', "volume-direction"}, {1, 0, 0});
     args::ValueFlag<std::string> vf_outfile(parser,
-                                            "vf_outfile",
+                                            "outfile",
                                             "Output file for the result.",
                                             {'o', "output"}, "");
 
-    args::ValueFlag<bool> vf_use_cpu(parser, "vf_use_cpu", "Flag to force CPU backprojection", {"cpu"}, false);
+    args::ValueFlag<bool> vf_use_cpu(parser, "use_cpu", "Flag to force CPU backprojection", {"cpu"}, false);
 
     try
     {
