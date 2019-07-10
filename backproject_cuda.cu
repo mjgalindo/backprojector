@@ -1,9 +1,11 @@
 
 #include <chrono>
 #include <math.h>
+#include <cmath>
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include "stdio.h"
 
 #include <thrust/device_vector.h>
 #include <thrust/copy.h>
@@ -32,21 +34,14 @@ float distance(const float *p1, const float *p2)
 
 __forceinline__ __device__
 void compute_distance(const float * voxel_position,
-					   const float *laser_pos, 
-					   const float *camera_pos, 
 					   const pointpair * pair,
 					   float * distance_out)
 {
-	// From the laser to the wall
-	float laser_wall_distance = distance(laser_pos, pair->laser_point);
 	// From the wall to the current voxel
 	float laser_point_voxel_distance = distance(pair->laser_point, voxel_position);
-	// From the wall back to the camera
-	float cam_wall_distance = distance(pair->cam_point, camera_pos);
 	// From the object back to the wall
 	float voxel_cam_point_distance = distance(voxel_position, pair->cam_point);
-	
-	*distance_out = laser_wall_distance + laser_point_voxel_distance + voxel_cam_point_distance + cam_wall_distance;
+	*distance_out = laser_point_voxel_distance + voxel_cam_point_distance;
 }
 
 __forceinline__ __device__
@@ -94,8 +89,6 @@ void cuda_backprojection_impl(float *transient_data,
                               uint32_t *T,
                               uint32_t *num_pairs,
                               pointpair *scanned_pairs,
-                              float *camera_pos,
-                              float *laser_pos,
                               float *voxel_volume,
                               float *volume_zero_pos,
                               float *voxel_inc,
@@ -126,7 +119,7 @@ void cuda_backprojection_impl(float *transient_data,
 		{
 			uint32_t pair_index = i * blockDim.x + threadIdx.x;
 			float total_distance;
-			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
+			compute_distance(voxel_position, &scanned_pairs[pair_index], &total_distance);
 			uint32_t time_index = round((total_distance - *t0) / *deltaT);
 			uint32_t tdindex = pair_index * *T + time_index;
 
@@ -182,7 +175,7 @@ void cuda_complex_backprojection_impl(cuComplex *transient_data,
 		{
 			uint32_t pair_index = i * blockDim.x + threadIdx.x;
 			float total_distance;
-			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
+			compute_distance(voxel_position, &scanned_pairs[pair_index], &total_distance);
 			uint32_t time_index = round((total_distance - *t0) / *deltaT);
 			uint32_t tdindex = pair_index * *T + time_index;
 
@@ -218,8 +211,6 @@ void call_cuda_backprojection(const float* transient_chunk,
 	uint32_t num_pairs = scanned_pairs.size();
 	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
 	thrust::device_vector<pointpair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
-	thrust::device_vector<float> camera_pos_gpu(camera_position, camera_position + 3);
-	thrust::device_vector<float> laser_pos_gpu(laser_position, laser_position + 3);
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
 	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
 	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
@@ -273,9 +264,9 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
 	dim3 threads_in_block(blockSize, 1, 1);
-	uint32_t number_of_runs = std::ceil(std::max(std::max(voxels_per_side[0], voxels_per_side[1]), voxels_per_side[2]) / (float) minGridSize);
-	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
-
+	uint32_t max_dim = std::max({voxels_per_side[0], voxels_per_side[1], voxels_per_side[2]});
+	uint32_t number_of_runs = std::ceil((max_dim * max_dim * max_dim)/ (float) (minGridSize*minGridSize*minGridSize));
+	std::cout << max_dim << std::endl;
 	std::cout << "Backprojecting on the GPU using the \"optimal\" configuration" << std::endl;
 	std::cout << "# Blocks: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
 	std::cout << "# Threads per block: " << threads_in_block.x << ' ' << threads_in_block.y << ' ' << threads_in_block.z << std::endl;
@@ -292,8 +283,6 @@ void call_cuda_backprojection(const float* transient_chunk,
 			thrust::raw_pointer_cast(&T_gpu[0]),
 			thrust::raw_pointer_cast(&num_pairs_gpu[0]),
 			thrust::raw_pointer_cast(&scanned_pairs_gpu[0]),
-			thrust::raw_pointer_cast(&camera_pos_gpu[0]),
-			thrust::raw_pointer_cast(&laser_pos_gpu[0]),
 			thrust::raw_pointer_cast(&voxel_volume_gpu[0]),
 			thrust::raw_pointer_cast(&volume_zero_pos_gpu[0]),
 			thrust::raw_pointer_cast(&voxel_inc_gpu[0]),

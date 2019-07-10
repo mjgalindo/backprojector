@@ -20,7 +20,6 @@ namespace bp
 template <typename V1, typename V2>
 float distance(const V1 &p1, const V2 &p2)
 {
-    if (p1.size() < 3 || p2.size() < 3) return 0.0;
     std::array<float, 3> tmp;
     for (int i = 0; i < 3; i++)
     {
@@ -319,9 +318,6 @@ xt::xarray<float> gpu_backproject(
         if (voxels_per_side[i] == 1)
             voxel_inc[i] = volume_size[i];
 
-    // Copy all the necessary information to the device
-
-    /// float *transient_data,
     if (assume_row_major)
     {
         std::cout << "Copying compact transient data measurements" << std::flush;
@@ -337,16 +333,30 @@ xt::xarray<float> gpu_backproject(
     {
         if (assume_row_major)
         {
-            transient_chunk = xt::view(transient_data, xt::all(), xt::all(), xt::range(min_T_index, max_T_index));
+            transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
+            #pragma omp parallel for
+            for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
+                for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
+                {
+                    float cam_wall_dist = distance(camera_position.data(), &laser_grid_positions.data()[lx*laser_grid_points[1]*3+ly*3]);
+                    float laser_wall_dist = distance(laser_position.data(), &laser_grid_positions.data()[lx*laser_grid_points[1]*3+ly*3]);
+                    uint32_t ext_distance = round((cam_wall_dist + laser_wall_dist) / deltaT);
+                    xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, lx, ly, xt::range(min_T_index+ext_distance, max_T_index+ext_distance));
+                }
+
         }
         else
         {
             transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
-#pragma omp parallel for
+            #pragma omp parallel for
             for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
                 for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
                 {
-                    xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::range(min_T_index, max_T_index), ly, lx);
+                    float cam_wall_dist = distance(camera_position.data(), &laser_grid_positions.data()[lx*laser_grid_points[1]*3+ly*3]);
+                    float laser_wall_dist = distance(laser_position.data(), &laser_grid_positions.data()[lx*laser_grid_points[1]*3+ly*3]);
+                    uint32_t ext_distance = round((cam_wall_dist + laser_wall_dist) / deltaT);
+                    printf("%d", ext_distance);
+                    xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::range(min_T_index+ext_distance, max_T_index+ext_distance), ly, lx);
                 }
         }
     }
@@ -382,17 +392,17 @@ xt::xarray<float> gpu_backproject(
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
     xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side);
     call_cuda_backprojection(transient_chunk.data(),
-                             total_transient_size,
-                             chunkedT,
-                             scanned_pairs,
-                             camera_position.size() > 1 ? camera_position.data() : nullptr,
-                             laser_position.size() > 1 ? laser_position.data() : nullptr,
-                             voxel_volume.data(),
-                             voxels_per_side.data(),
-                             volume_zero_pos.data(),
-                             voxel_inc.data(),
-                             t0,
-                             deltaT);
+                            total_transient_size,
+                            chunkedT,
+                            scanned_pairs,
+                            camera_position.size() > 1 ? camera_position.data() : nullptr,
+                            laser_position.size() > 1 ? laser_position.data() : nullptr,
+                            voxel_volume.data(),
+                            voxels_per_side.data(),
+                            volume_zero_pos.data(),
+                            voxel_inc.data(),
+                            t0,
+                            deltaT);
 
     return voxel_volume;
 }

@@ -28,7 +28,6 @@ inline xt::pyarray<float> backproject(
 {
     if (use_cpu)
     {
-        // THIS DOES NOT WORK!! And even when it worked it was slow
         return bp::backproject(transient_data,
                     camera_grid_positions,
                     laser_grid_positions,
