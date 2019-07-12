@@ -213,6 +213,7 @@ void call_cuda_backprojection(const float* transient_chunk,
                               float t0,
                               float deltaT)
 {
+
 	thrust::device_vector<float> transient_chunk_gpu(transient_chunk, transient_chunk + transient_size);
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
@@ -221,13 +222,12 @@ void call_cuda_backprojection(const float* transient_chunk,
 	thrust::device_vector<float> camera_pos_gpu(camera_position, camera_position + 3);
 	thrust::device_vector<float> laser_pos_gpu(laser_position, laser_position + 3);
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
-	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
 	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
 	thrust::device_vector<float> voxel_inc_gpu(voxel_inc, voxel_inc + 3);
 	thrust::device_vector<float> t0_gpu(&t0, &t0 + 1);
 	thrust::device_vector<float> deltaT_gpu(&deltaT, &deltaT + 1);
 	thrust::device_vector<uint32_t> voxels_per_side_gpu(voxels_per_side, voxels_per_side + 3);
-
+	
 	{
 		cudaError_t error = cudaGetLastError();
 		if (error != cudaSuccess)
@@ -266,15 +266,27 @@ void call_cuda_backprojection(const float* transient_chunk,
 		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 2] = z;
 	}
 
-	uint32_t *kernel_voxels_gpu;
-	const uint32_t num_blocks_per_kernel_run = minGridSize*minGridSize*minGridSize;
-	cudaMalloc((void **)&kernel_voxels_gpu, 3*num_blocks_per_kernel_run*sizeof(uint32_t));
-	cudaMemcpy(kernel_voxels_gpu, kernel_voxels.data(), 3*num_blocks_per_kernel_run*sizeof(uint32_t), cudaMemcpyHostToDevice);
+	thrust::device_vector<uint32_t> kernel_voxels_gpu(kernel_voxels.begin(), kernel_voxels.end());
 
 	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
 	dim3 threads_in_block(blockSize, 1, 1);
 	uint32_t number_of_runs = std::ceil(std::max(std::max(voxels_per_side[0], voxels_per_side[1]), voxels_per_side[2]) / (float) minGridSize);
 	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
+
+	size_t free_mem, total_mem;
+	cudaMemGetInfo(&free_mem, &total_mem);
+	uint32_t nvoxels_chunk = nvoxels;
+	uint32_t nmem_transfers = 1, transfer_period = number_of_runs;
+	uint32_t transfers = 0;
+	while (nvoxels_chunk*sizeof(float) >= free_mem)
+	{
+		// TODO: This is GOING TO fail if the volume chunk is smaller than the minGridSize
+		nvoxels_chunk = nvoxels_chunk / 2;
+		nmem_transfers = nmem_transfers * 2;
+		transfer_period = transfer_period / 2;
+	}
+
+	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume+nvoxels_chunk);
 
 	std::cout << "Backprojecting on the GPU using the \"optimal\" configuration" << std::endl;
 	std::cout << "# Blocks: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
@@ -286,6 +298,12 @@ void call_cuda_backprojection(const float* transient_chunk,
 	bar.set_theme_braille();
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
+		if (r > 0 && r % transfer_period == 0)
+		{
+			thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume+transfers*nvoxels_chunk);
+			thrust::copy(voxel_volume+transfers*nvoxels_chunk, voxel_volume+transfers*nvoxels_chunk+nvoxels_chunk, thrust::raw_pointer_cast(&voxel_volume_gpu[0]));
+			transfers++;
+		}
 		auto start = std::chrono::steady_clock::now();
 		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(double)>>>(
 			thrust::raw_pointer_cast(&transient_chunk_gpu[0]),
