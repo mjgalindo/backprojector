@@ -14,7 +14,9 @@
 #define MAKE_DLL_EXPORT __declspec(dllexport)
 #endif
 #include "backproject_cuda.hpp"
+#if __linux__
 #include "tqdm.h"
+#endif
 
 __device__
 float distance(const float *p1, const float *p2) 
@@ -282,8 +284,12 @@ void call_cuda_backprojection(const float* transient_chunk,
 	std::cout << "# Kernel calls: " << number_of_runs << std::endl;
 	
 	auto start = std::chrono::steady_clock::now();
+	#if __linux__
 	tqdm bar;
 	bar.set_theme_braille();
+	#else
+	std::cout << 0 << " / " << number_of_runs << std::flush;
+	#endif
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
 		auto start = std::chrono::steady_clock::now();
@@ -302,10 +308,18 @@ void call_cuda_backprojection(const float* transient_chunk,
 			thrust::raw_pointer_cast(&voxels_per_side_gpu[0]),
 			thrust::raw_pointer_cast(&kernel_voxels_gpu[0]));
 		cudaDeviceSynchronize();
+		#if __linux__
 		bar.progress(r, number_of_runs);
+		#else
+		std::cout << '\r' << r+1 << " / " << number_of_runs << std::flush;
+		#endif
 	}
 	cudaDeviceSynchronize();
+	#if __linux__
 	bar.finish();
+	#else
+	std::cout << std::endl;
+	#endif
 	auto end = std::chrono::steady_clock::now();
 	std::cout << "Backprojection took "
 		<< std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
