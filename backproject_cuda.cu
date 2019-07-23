@@ -130,9 +130,11 @@ void cuda_backprojection_impl(float *transient_data,
 			float total_distance;
 			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
 			uint32_t time_index = round((total_distance - *t0) / *deltaT);
-			uint32_t tdindex = pair_index * *T + time_index;
-
-			radiance_sum += transient_data[tdindex]; // * distance_attenuation;
+			if (time_index < *T)
+			{
+				uint32_t tdindex = pair_index * *T + time_index;
+				radiance_sum += transient_data[tdindex]; // * distance_attenuation;
+			}
 		}
 	}
     __syncthreads();
