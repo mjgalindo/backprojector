@@ -104,6 +104,11 @@ int main(int argc, const char *argv[])
         volume_direction = args::get(vf_volume_direction);
         outfile = args::get(vf_outfile);
         use_cpu = args::get(vf_use_cpu);
+        if (use_cpu)
+        {
+            std::cerr << "CPU backprojection is currently not supported.\n"
+            exit(1);
+        }
     }
     catch (const args::Completion &e)
     {
@@ -161,6 +166,7 @@ int main(int argc, const char *argv[])
     
     xt::xarray<float> volume;
 
+    // CPU BACKPROJECTION IS NOT SUPPORTED AS OF NOW
     if (use_cpu)
     {
         volume = bp::backproject(transient_data,
