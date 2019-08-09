@@ -360,7 +360,7 @@ xt::xarray<float> gpu_backproject(
         {
             transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], camera_grid_points[0], camera_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
 #pragma omp parallel for
-            for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
+            for (uint32_t lx = 0; lx < laser_grid_points[0]; lx++)
                 for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
                     for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
                         for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
