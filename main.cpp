@@ -106,7 +106,7 @@ int main(int argc, const char *argv[])
         use_cpu = args::get(vf_use_cpu);
         if (use_cpu)
         {
-            std::cerr << "CPU backprojection is currently not supported.\n"
+            std::cerr << "CPU backprojection is currently not supported.\n";
             exit(1);
         }
     }
