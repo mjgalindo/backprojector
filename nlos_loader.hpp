@@ -221,15 +221,6 @@ class NLOSData {
         hidden_volume_position = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_POSITION)); 
         hidden_volume_rotation = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_ROTATION)); 
         hidden_volume_size = load_field_array<float>(file.openDataSet(DS_HIDDEN_VOLUME_SIZE));
-        if (engine.compare("dsrender") != 0) 
-        {
-        #ifdef USE_XTENSOR
-            hidden_volume_size = hidden_volume_size * 2;
-        #else
-            for (uint32_t i = 0; i < hidden_volume_size.total_elements; i++)
-                hidden_volume_size.buff[i] *= 2;
-        #endif
-        }
         t0 = load_field_array<float>(file.openDataSet(DS_T0));
         bins = load_field_array<int>(file.openDataSet(DS_T));
         deltat = load_field_array<float>(file.openDataSet(DS_DELTA_T));
