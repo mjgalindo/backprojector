@@ -16,7 +16,7 @@ We created this code as part of our work in ["A Dataset for Benchmarking Time-Re
 
 We also accept requests on new features or pull-requests on fixes or improvements, so if you want to contribute you know what to do.
 
-# Install
+# Installation
 
 Clone the repository with:
 
@@ -56,6 +56,16 @@ replacing XX with the previous value.
 The ```backprojector``` binary takes a file from [our dataset](graphics.unizar.es/nlos) and backprojects the default hidden region. You can have a look at the options with the ```-h``` argument, allowing you to choose what to reconstruct.
 
 We also prepared a simple python binding for the backprojection routine, taking numpy arrays as inputs to simplify interfacing it with other data formats.
+
+## Example
+
+Download a dataset from (the website)[graphics.unizar.es/nlos], (we'll use [this one](https://drive.google.com/uc?export=download&id=1_niEa4nThL00Gi206d4QH2nylRa-Y7st) next).
+Running ```./backprojector serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00].hdf5``` should create a ```serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00]_recon.hdf5``` file which you can easily load and visualize on MATLAB with:
+
+```
+v = h5read('serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00]_recon.hdf5', 'voxelVolume');
+volumeViewer(v);
+```
 
 # Performance
 
