@@ -46,16 +46,16 @@ xt::xarray<float> backproject(
     float deltaT,
     bool is_confocal,
     const xt::xarray<float> &volume_position,
-    float volume_size,
-    uint32_t voxels_per_side)
+    const xt::xarray<float> volume_size,
+    const xt::xarray<uint32_t> voxels_per_side)
 {
-    float voxel_size = volume_size / (voxels_per_side - 1);
+    xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
 
     // Instead of creating a tensor with the actual 3d points, we can just compute them on the fly.
     // This may be slower or faster, depending on how expensive memory access to such a volume was (may need testing)
     auto get_point = [volume_position, volume_size, voxel_size](uint32_t x, uint32_t y, uint32_t z) -> xt::xarray<float> {
         static auto zero_pos = volume_position - volume_size / 2;
-        return zero_pos + xt::xarray<float>{x * voxel_size, y * voxel_size, z * voxel_size};
+        return zero_pos + xt::xarray<float>{x * voxel_size[0], y * voxel_size[1], z * voxel_size[2]};
     };
 
     std::array<uint32_t, 2> camera_grid_points;
@@ -63,12 +63,12 @@ xt::xarray<float> backproject(
     {
         // camera_grid_positions.shape() is {3, point_y, points_x}
         auto t = camera_grid_positions.shape();
-        camera_grid_points[0] = t[2];
+        camera_grid_points[0] = t[0];
         camera_grid_points[1] = t[1];
 
         // laser_grid_positions.shape() is {3, point_y, points_x}
         t = laser_grid_positions.shape();
-        laser_grid_points[0] = t[2];
+        laser_grid_points[0] = t[0];
         laser_grid_points[1] = t[1];
     }
 
@@ -77,11 +77,11 @@ xt::xarray<float> backproject(
 
 // Calculate camera-wall distances
 #pragma omp parallel for
-    for (int32_t cx = 0; cx < (int)camera_grid_points[0]; cx++)
+    for (int32_t cx = 0; cx < (int) camera_grid_points[0]; cx++)
     {
-        for (int32_t cy = 0; cy < (int)camera_grid_points[1]; cy++)
+        for (int32_t cy = 0; cy < (int) camera_grid_points[1]; cy++)
         {
-            auto wall_point = xt::view(camera_grid_positions, xt::all(), cy, cx);
+            auto wall_point = xt::view(camera_grid_positions, cx, cy, xt::all());
             camera_wall_distances(cx, cy) = distance(camera_position, wall_point);
             if (is_confocal)
             {
@@ -93,45 +93,45 @@ xt::xarray<float> backproject(
     if (!is_confocal)
     {
         // Calculate laser-wall distances
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int32_t lx = 0; lx < (int)camera_grid_points[0]; lx++)
         {
             for (int32_t ly = 0; ly < (int)camera_grid_points[1]; ly++)
             {
-                auto wall_point = xt::view(camera_grid_positions, xt::all(), ly, lx);
+                auto wall_point = xt::view(camera_grid_positions, lx, ly, xt::all());
                 laser_wall_distances(lx, ly) = distance(laser_position, wall_point);
             }
         }
     }
 
-    int T = transient_data.shape()[0];
-    xt::xarray<float> volume = xt::zeros<float>({voxels_per_side, voxels_per_side, voxels_per_side});
+    int T = transient_data.shape()[transient_data.shape().size()-1];
+    xt::xarray<float> volume = xt::zeros<float>(voxels_per_side);
 
     int iters = 0;
-    std::cout << '\r' << 0 << '/' << voxels_per_side << std::flush;
+    std::cout << '\r' << 0 << '/' << voxels_per_side[0] << std::flush;
 
-#pragma omp parallel for schedule(static)
-    for (int32_t x = 0; x < voxels_per_side; x++)
+//#pragma omp parallel for schedule(static)
+    for (int32_t x = 0; x < voxels_per_side[0]; x++)
     {
-        for (uint32_t y = 0; y < voxels_per_side; y++)
+        for (uint32_t y = 0; y < voxels_per_side[1]; y++)
         {
-            for (uint32_t z = 0; z < voxels_per_side; z++)
+            for (uint32_t z = 0; z < voxels_per_side[2]; z++)
             {
                 float radiance_sum = 0.0;
                 xt::xarray<float> voxel_position = get_point(x, y, z);
-                for (int32_t lx = 0; lx < (int)laser_grid_points[0]; lx++)
+                for (int32_t lx = 0; lx < (int) laser_grid_points[0]; lx++)
                 {
-                    for (int32_t ly = 0; ly < (int)laser_grid_points[1]; ly++)
+                    for (int32_t ly = 0; ly < (int) laser_grid_points[1]; ly++)
                     {
-                        xt::xarray<float> laser_wall_point = xt::view(laser_grid_positions, xt::all(), ly, lx);
+                        xt::xarray<float> laser_wall_point = xt::view(laser_grid_positions, lx, ly, xt::all());
                         float laser_wall_distance = laser_wall_distances(lx, ly);
                         if (!is_confocal)
                         {
-                            for (int32_t cx = 0; cx < (int)camera_grid_points[0]; cx++)
+                            for (int32_t cx = 0; cx < (int) camera_grid_points[0]; cx++)
                             {
-                                for (int32_t cy = 0; cy < (int)camera_grid_points[1]; cy++)
+                                for (int32_t cy = 0; cy < (int) camera_grid_points[1]; cy++)
                                 {
-                                    xt::xarray<float> camera_wall_point = xt::view(camera_grid_positions, xt::all(), cy, cx);
+                                    xt::xarray<float> camera_wall_point = xt::view(camera_grid_positions, cx, cy, xt::all());
                                     float camera_wall_distance = camera_wall_distances(cx, cy);
 
                                     float wall_voxel_wall_distance = distance(laser_wall_point, voxel_position) +
@@ -140,7 +140,7 @@ xt::xarray<float> backproject(
                                     int time_index = round((total_distance - t0) / deltaT);
                                     if (time_index >= 0 && time_index < T)
                                     {
-                                        radiance_sum += transient_data(time_index, cy, cx, ly, lx);
+                                        radiance_sum += transient_data(lx, ly, cx, cy, time_index);
                                     }
                                 }
                             }
@@ -153,7 +153,7 @@ xt::xarray<float> backproject(
                             int time_index = round((total_distance - t0) / deltaT);
                             if (time_index >= 0 && time_index < T)
                             {
-                                radiance_sum += transient_data(time_index, ly, lx);
+                                radiance_sum += transient_data(lx, ly, time_index);
                             }
                         }
                     }
@@ -165,10 +165,11 @@ xt::xarray<float> backproject(
         {
             uint32_t nthreads = omp_get_num_threads();
             uint32_t slices_done = (++iters) * nthreads;
-            slices_done = slices_done > voxels_per_side ? voxels_per_side : slices_done;
-            std::cout << '\r' << slices_done << '/' << voxels_per_side << std::flush;
+            slices_done = slices_done > voxels_per_side[0] ? voxels_per_side[0] : slices_done;
+            std::cout << '\r' << slices_done << '/' << voxels_per_side[0] << std::flush;
         }
     }
+    std::cout << xt::sum(volume) << std::endl << std::endl;
     return volume;
 }
 
@@ -255,7 +256,7 @@ xt::xarray<float> gpu_backproject(
         min_distance -= t0;
         max_distance -= t0;
         min_T_index = std::max((int)floor(min_distance / deltaT) - 100, 0);
-        max_T_index = std::min((int)ceil(max_distance / deltaT) + 100, (int)T);
+        max_T_index = std::min((int)ceil(max_distance / deltaT) + 200, (int)T);
     }
 
     // Gather the captured pairs into a single vector to pass to the GPU.

@@ -107,7 +107,7 @@ int main(int argc, const char *argv[])
         if (use_cpu)
         {
             std::cerr << "CPU backprojection is currently not supported.\n";
-            exit(1);
+            //exit(1);
         }
     }
     catch (const args::Completion &e)
@@ -176,8 +176,8 @@ int main(int argc, const char *argv[])
                                  data.laser_position,
                                  t0, deltaT, is_confocal,
                                  volume_position,
-                                 volume_size[0],
-                                 voxel_resolution[0]);
+                                 volume_size,
+                                 voxel_resolution);
     }
     else
     {

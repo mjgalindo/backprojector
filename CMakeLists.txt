@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.11)
 project(backprojector LANGUAGES CXX CUDA)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
-set (CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CUDA_COMPUTE_CAPABILITY 52 CACHE STRING "Cuda compute capability for the build")
 
 add_executable(backprojector main.cpp)
@@ -30,7 +30,7 @@ else()
     target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX ${HDF5_LIBRARIES} cudabp_static)
 endif(WIN32)
 
-find_package(NumPy REQUIRED)
+find_package(NumPy)
 if (NUMPY_FOUND)
     message("Python bindings will be built")
     add_subdirectory(pybind11)
