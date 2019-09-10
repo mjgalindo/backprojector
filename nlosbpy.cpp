@@ -23,6 +23,7 @@ inline xt::pyarray<float> backproject(
     const xt::pyarray<float> &volume_position,
     const xt::pyarray<float> &volume_size,
     const xt::pyarray<uint32_t> &voxels_per_side,
+    const xt::pyarray<float> &wall_normal={0,0,0},
     bool assume_row_major = false,
     bool use_cpu = false)
 {
@@ -50,7 +51,8 @@ inline xt::pyarray<float> backproject(
                     volume_position,
                     volume_size,
                     voxels_per_side,
-                    assume_row_major);
+                    assume_row_major,
+                    wall_normal);
     }
 }
 

@@ -10,3 +10,6 @@
 [submodule "xtensor-python"]
 	path = xtensor-python
 	url = https://github.com/QuantStack/xtensor-python
+[submodule "xtensor-blas"]
+	path = xtensor-blas
+	url = https://github.com/QuantStack/xtensor-blas

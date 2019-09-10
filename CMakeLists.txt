@@ -21,7 +21,7 @@ target_compile_options(cudabp_static PRIVATE $<$<CONFIG:Debug>:-G> -gencode arch
 
 find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
-target_include_directories(backprojector PRIVATE ${HDF5_INCLUDE_DIRS} xtl/include xtensor/include)
+target_include_directories(backprojector PRIVATE ${HDF5_INCLUDE_DIRS} xtl/include xtensor/include xtensor-blas/include)
 if (WIN32)
     STRING(REGEX REPLACE "(.+)/.+.lib;.+" "\\1" HDF5_LIBRARY_DIR "${HDF5_LIBRARIES}")
     target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX cudabp_static 
@@ -36,7 +36,7 @@ if (NUMPY_FOUND)
     add_subdirectory(pybind11)
     pybind11_add_module(nlosbpy nlosbpy.cpp)
     target_compile_features(nlosbpy PUBLIC cxx_std_14)
-    target_include_directories(nlosbpy PRIVATE ${NUMPY_INCLUDE_DIRS} xtl/include xtensor/include xtensor-python/include)
+    target_include_directories(nlosbpy PRIVATE ${NUMPY_INCLUDE_DIRS} xtl/include xtensor/include xtensor-python/include xtensor-blas/include)
     target_link_libraries(nlosbpy PRIVATE OpenMP::OpenMP_CXX cudabp)
     install(TARGETS nlosbpy DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif(NUMPY_FOUND)

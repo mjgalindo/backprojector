@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <xtensor/xtensor.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xcontainer.hpp>
@@ -184,14 +185,15 @@ xt::xarray<float> gpu_backproject(
     const xt::xarray<float> &volume_position,
     const xt::xarray<float> &volume_size,
     xt::xarray<uint32_t> voxels_per_side,
-    bool assume_row_major = false)
+    bool assume_row_major = false,
+    const xt::xarray<float> wall_normal=xt::xarray<float>{0,-1,0})
 {
     auto tdata_shape = transient_data.shape();
     uint32_t T = tdata_shape[assume_row_major ? tdata_shape.size() - 1 : 0];
 
     std::array<uint32_t, 2> camera_grid_points;
     std::array<uint32_t, 2> laser_grid_points;
-
+    
     {
         // camera_grid_positions.shape() is (points_x, points_y, 3)
         auto t = camera_grid_positions.shape();
@@ -203,6 +205,7 @@ xt::xarray<float> gpu_backproject(
         laser_grid_points[0] = t[assume_row_major ? 0 : 2];
         laser_grid_points[1] = t[assume_row_major ? 1 : 1];
     }
+    
 
     const uint32_t num_laser_points = laser_grid_points[0] * laser_grid_points[1];
     const uint32_t num_camera_points = camera_grid_points[0] * camera_grid_points[1];
@@ -312,14 +315,28 @@ xt::xarray<float> gpu_backproject(
                         }
                     }
     }
+    
+    // Compute the reconstruction volume so that it is aligned to the relay-wall
+    xt::xarray<float> x({1,0,0});
+    xt::xarray<float> y({0,1,0});
+    xt::xarray<float> z({0,0,1});
 
-    xt::xarray<float> volume_zero_pos = volume_position - volume_size / 2;
+    if (wall_normal[0] != 0 || wall_normal[1] != 0 || wall_normal[2] != 0)
+    {   
+        y = wall_normal;
+        x = xt::linalg::cross(y,z);
+        z = xt::linalg::cross(y,x);
+        x = x / xt::sqrt(xt::sum(x*x));
+        y = y / xt::sqrt(xt::sum(y*y));
+        z = z / xt::sqrt(xt::sum(z*z));
+    }
+
+    xt::xarray<float> volume_zero_pos = volume_position - (volume_size * x + volume_size * y + volume_size * z)  / 2;
     xt::xarray<float> voxel_inc = volume_size / (voxels_per_side - 1);
     for (uint32_t i = 0; i < 3; i++)
         if (voxels_per_side[i] == 1)
             voxel_inc[i] = volume_size[i];
-
-    // Copy all the necessary information to the device
+    voxel_inc = voxel_inc * x + voxel_inc * y + voxel_inc * z;
 
     /// float *transient_data,
     if (assume_row_major)
@@ -369,6 +386,7 @@ xt::xarray<float> gpu_backproject(
                         }
         }
     }
+    
     transient_chunk = xt::nan_to_num(transient_chunk);
 
     uint32_t total_transient_size = 1;

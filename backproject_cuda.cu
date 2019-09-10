@@ -2,6 +2,8 @@
 #include <chrono>
 #include <math.h>
 #include <iostream>
+#include <fstream>
+
 #include <thread>
 #include <chrono>
 
@@ -309,6 +311,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 			thrust::raw_pointer_cast(&deltaT_gpu[0]),
 			thrust::raw_pointer_cast(&voxels_per_side_gpu[0]),
 			thrust::raw_pointer_cast(&kernel_voxels_gpu[0]));
+
 		cudaDeviceSynchronize();
 		#if __linux__
 		bar.progress(r, number_of_runs);
@@ -335,6 +338,12 @@ void call_cuda_backprojection(const float* transient_chunk,
 		printf("CUDA error: %s\n", cudaGetErrorString(error));
 		exit(1);
 	}
+
+	//float voxel_positions[nvoxels*3];
+	//thrust::copy(voxel_positions_gpu.begin(), voxel_positions_gpu.end(), voxel_positions);
+	//std::ofstream file("positions.out", std::ios::binary);
+	//file.write((char*) voxel_positions, sizeof(float)*nvoxels*3);
+	//file.close();
 
 	thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume);
 }
