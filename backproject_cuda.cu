@@ -119,12 +119,12 @@ void cuda_backprojection_impl(float *transient_data,
 	double& radiance_sum = local_array[threadIdx.x];
 	radiance_sum = 0.0;
 
-	// Don't run if the current voxel is not 0. This means the current block has already finished.
-	if (voxel_volume[voxel_id] == 0.0)
 	{
-		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
-								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
-								  volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
+		float voxel_position[] = {
+			volume_zero_pos[0] + voxel_inc[0] * xyz[0] + voxel_inc[3] * xyz[1] + voxel_inc[6] * xyz[2],
+			volume_zero_pos[1] + voxel_inc[1] * xyz[0] + voxel_inc[4] * xyz[1] + voxel_inc[7] * xyz[2],
+			volume_zero_pos[2] + voxel_inc[2] * xyz[0] + voxel_inc[5] * xyz[1] + voxel_inc[8] * xyz[2]
+		};
 
 		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
 		{
@@ -177,12 +177,14 @@ void cuda_complex_backprojection_impl(cuComplex *transient_data,
 	cuDoubleComplex& radiance_sum = local_array2[threadIdx.x];
 	radiance_sum = make_cuDoubleComplex(0.0, 0.0);
 
+	
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
 	if (voxel_volume[voxel_id] == 0.0)
 	{
-		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
-								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
-								  volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
+		float voxel_position[3] = {
+			volume_zero_pos[0] + voxel_inc[0] * xyz[0] + voxel_inc[3] * xyz[1] + voxel_inc[6] * xyz[2],
+			volume_zero_pos[1] + voxel_inc[1] * xyz[0] + voxel_inc[4] * xyz[1] + voxel_inc[7] * xyz[2],
+			volume_zero_pos[2] + voxel_inc[2] * xyz[0] + voxel_inc[5] * xyz[1] + voxel_inc[8] * xyz[2]};
 
 		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
 		{
@@ -229,7 +231,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
 	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
 	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
-	thrust::device_vector<float> voxel_inc_gpu(voxel_inc, voxel_inc + 3);
+	thrust::device_vector<float> voxel_inc_gpu(voxel_inc, voxel_inc + 9);
 	thrust::device_vector<float> t0_gpu(&t0, &t0 + 1);
 	thrust::device_vector<float> deltaT_gpu(&deltaT, &deltaT + 1);
 	thrust::device_vector<uint32_t> voxels_per_side_gpu(voxels_per_side, voxels_per_side + 3);
@@ -338,12 +340,6 @@ void call_cuda_backprojection(const float* transient_chunk,
 		printf("CUDA error: %s\n", cudaGetErrorString(error));
 		exit(1);
 	}
-
-	//float voxel_positions[nvoxels*3];
-	//thrust::copy(voxel_positions_gpu.begin(), voxel_positions_gpu.end(), voxel_positions);
-	//std::ofstream file("positions.out", std::ios::binary);
-	//file.write((char*) voxel_positions, sizeof(float)*nvoxels*3);
-	//file.close();
-
+	
 	thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume);
 }

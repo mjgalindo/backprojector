@@ -213,7 +213,7 @@ xt::xarray<float> gpu_backproject(
     const uint32_t num_non_nan_camera_points = xt::sum(!xt::isnan(xt::view(camera_grid_positions, xt::all(), xt::all(), 0)))[0];
 
     std::vector<pointpair> scanned_pairs;
-
+    
     std::vector<uint32_t> sum_plane;
     if (assume_row_major)
         sum_plane = {0, 1};
@@ -332,12 +332,11 @@ xt::xarray<float> gpu_backproject(
     }
 
     xt::xarray<float> volume_zero_pos = volume_position - (volume_size * x + volume_size * y + volume_size * z)  / 2;
-    xt::xarray<float> voxel_inc = volume_size / (voxels_per_side - 1);
-    for (uint32_t i = 0; i < 3; i++)
-        if (voxels_per_side[i] == 1)
-            voxel_inc[i] = volume_size[i];
-    voxel_inc = voxel_inc * x + voxel_inc * y + voxel_inc * z;
-
+    xt::xarray<float> voxel_inc = xt::stack(xt::xtuple(
+                                    (x * volume_size[0]) / (voxels_per_side[0] - 1), 
+                                    (y * volume_size[1]) / (voxels_per_side[1] - 1),
+                                    (z * volume_size[2]) / (voxels_per_side[2] - 1)));
+                                    
     /// float *transient_data,
     if (assume_row_major)
     {
