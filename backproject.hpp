@@ -247,7 +247,7 @@ xt::xarray<float> gpu_backproject(
         float laser_grid_diagonal = distance(las_min_point, las_max_point);
         float camera_grid_diagonal = distance(cam_min_point, cam_max_point);
         float max_size = xt::amax(volume_size)[0];
-        float voxel_volume_diagonal = sqrt(sqrt(2 * (max_size * max_size)) + max_size * max_size);
+        float voxel_volume_diagonal = sqrt(3 * max_size * max_size);
         float min_distance = abs(distance(laser_position, laser_grid_center) - laser_grid_diagonal / 2 +
                              2 * (distance(laser_grid_center, volume_position) - voxel_volume_diagonal / 2) +
                              distance(camera_position, camera_grid_center) - camera_grid_diagonal / 2);
