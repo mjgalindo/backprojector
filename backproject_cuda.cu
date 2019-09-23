@@ -343,3 +343,54 @@ void call_cuda_backprojection(const float* transient_chunk,
 	
 	thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume);
 }
+
+
+__global__
+void convolve1d(const float* transient_in,
+				const uint32_t* transient_shape,
+				const float* kernel,
+				const uint32_t* kernel_size,
+				float* convolved_out)
+{
+	const int num_points = transient_shape[0];
+	const int T = transient_shape[1];
+
+	for (int tId = 0; tId < T / blockDim.x; tId++)
+	{
+		const int id = blockIdx.x*num_points+blockIdx.x+tId*threadIdx.x;
+		convolved_out[id] = 0;
+		for (int k = 0; k < *kernel_size; k++)
+		{
+			convolved_out[id] += transient_in[id] * kernel[k];
+		}
+	}
+}
+
+void call_cuda_convolve1d(const float* transient_in,
+						  const uint32_t* transient_shape,
+						  const float* kernel,
+						  const uint32_t kernel_size,
+						  float* convolved_out)
+{
+	const uint32_t transient_total = transient_shape[0]*transient_shape[1];
+	thrust::device_vector<float> transient_in_gpu(transient_in, transient_in + transient_total);
+	thrust::device_vector<uint32_t> transient_shape_gpu(transient_shape, transient_shape + 2);
+	thrust::device_vector<float> kernel_gpu(kernel, kernel + kernel_size);
+	thrust::device_vector<uint32_t> kernel_size_gpu(&kernel_size, &kernel_size + 1);
+	thrust::device_vector<float> convolved_out_gpu(transient_total);
+	std::cout << transient_shape[0] << ' ' << transient_shape[1] << std::endl;
+	std::cout << kernel_size << std::endl;
+	dim3 xyz_blocks(transient_shape[0], 1, 1);
+	dim3 threads_in_block(transient_shape[1], 1, 1);
+	std::cout << "CONVOLUTION DONE " << transient_in << " " << convolved_out << " " << convolved_out[0] << " " << convolved_out_gpu[0] << std::endl;
+	convolve1d<<<xyz_blocks, threads_in_block>>>(
+		thrust::raw_pointer_cast(&transient_in_gpu[0]),
+		thrust::raw_pointer_cast(&transient_shape_gpu[0]),
+		thrust::raw_pointer_cast(&kernel_gpu[0]),
+		thrust::raw_pointer_cast(&kernel_size_gpu[0]),
+		thrust::raw_pointer_cast(&convolved_out_gpu[0]));
+	std::cout << "CONVOLUTION DONE " << transient_in << " " << convolved_out << " " << convolved_out[0] << " " << convolved_out_gpu[0] << std::endl;
+
+	thrust::copy(thrust::raw_pointer_cast(&convolved_out_gpu[0]), thrust::raw_pointer_cast(&convolved_out_gpu[0])+transient_total, convolved_out);
+	std::cout << "COPY DONE " << convolved_out[0] << std::endl;
+}

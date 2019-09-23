@@ -27,4 +27,10 @@ void call_cuda_backprojection(const float* transient_chunk,
                               float t0,
                               float deltaT);
 
+void call_cuda_convolve1d(const float* transient_in,
+                          const uint32_t* transient_size,
+                          const float* kernel,
+                          const uint32_t kernel_size,
+                          float* convolved_out);
+
 #endif

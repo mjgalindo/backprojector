@@ -28,7 +28,7 @@ inline xt::pyarray<float> backproject(
     bool use_cpu = false)
 {
     if (use_cpu)
-    {
+    {   
         // THIS DOES NOT WORK!! And even when it worked it was slow
         return bp::backproject(transient_data,
                     camera_grid_positions,
@@ -56,6 +56,15 @@ inline xt::pyarray<float> backproject(
     }
 }
 
+inline void convolve1d(const xt::pyarray<float> &transient_data,
+                       const xt::pyarray<float> &kernel)
+{
+    xt::xarray<float> tdcpy = transient_data;
+    xt::xarray<float> kcpy = kernel;
+    bp::gpu_convolve1d(tdcpy,
+                       kcpy);
+}
+
 // Python Module and Docstrings
 
 PYBIND11_MODULE(nlosbpy, m)
@@ -73,4 +82,5 @@ PYBIND11_MODULE(nlosbpy, m)
     )pbdoc";
 
     m.def("backproject", backproject, "Backprojects a transient capture to get an unfiltered volume.");
+    m.def("convolve1d", convolve1d, "Convolves a [num_points x T] transient image with a 1D kernel.");
 }

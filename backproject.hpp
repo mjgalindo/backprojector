@@ -414,6 +414,21 @@ xt::xarray<float> gpu_backproject(
     return voxel_volume;
 }
 
+
+void gpu_convolve1d(xt::xarray<float>& transient_data,
+                    xt::xarray<float>& kernel)
+{
+
+    std::vector<uint32_t> tdata_shape = {(uint32_t) transient_data.shape()[0], (uint32_t) transient_data.shape()[1]};
+    uint32_t kernel_shape = kernel.shape()[0];
+
+    call_cuda_convolve1d(transient_data.data(),
+                         tdata_shape.data(),
+                         kernel.data(),
+                         kernel_shape,
+                         transient_data.data());
+}
+
 } // namespace bp
 
 #endif
