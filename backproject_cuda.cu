@@ -258,7 +258,7 @@ void cuda_octree_backprojection_impl(float const *transient_data,
 		if (parent_aux_voxel_volume[parent_voxel_id] < *threshold)
 		{
 			aux_voxel_volume[aux_voxel_id] = 0.0f;
-			if (threadIdx.x == 0)
+			if (P && threadIdx.x == 0)
 			printf("EXITED EARLY FROM VOX %d, %d, %d PARENT %d %d %d  PARENT VALUE %.5f < %.5f\n",
 				xyz[0], xyz[1], xyz[2], parent_xyz[0], parent_xyz[1], parent_xyz[2], 
 				parent_aux_voxel_volume[parent_voxel_id], *threshold);
@@ -276,8 +276,7 @@ void cuda_octree_backprojection_impl(float const *transient_data,
 	if (mod != 1)
 	{
 		for (int i = 0; i < 3; i++) sizes[i] = (voxel_inc[i] * voxels_per_side[i]) / *depth;
-		voxel_diagonal = sqrt(sizes[0] * sizes[0] + sizes[1] * sizes[1]);
-		voxel_diagonal = sqrt(voxel_diagonal * voxel_diagonal + sizes[2] * sizes[2]);
+		voxel_diagonal = sqrt(sizes[0] * sizes[0] + sizes[1] * sizes[1] + sizes[2] * sizes[2]);
 	}
 	
 	if (P && is_first_thread())
@@ -379,7 +378,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	thrust::device_vector<float> deltaT_gpu(&deltaT, &deltaT + 1);
 	thrust::device_vector<uint32_t> voxels_per_side_gpu(voxels_per_side, voxels_per_side + 3);
 
-	float threshold = -0.0000001f; // TODO: DONT FORCE EVERYTHING TO BE COMPUTED
+	float threshold = std::stof(std::getenv("T")); // TODO: DONT FORCE EVERYTHING TO BE COMPUTED
 	thrust::device_vector<float> threshold_gpu(&threshold, &threshold+1);
 
 	{
