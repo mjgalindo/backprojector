@@ -25,6 +25,7 @@ void call_cuda_backprojection(const float* transient_chunk,
                               const float* volume_zero_pos,
                               const float* voxel_inc,
                               float t0,
-                              float deltaT);
+                              float deltaT,
+                              bool rescale_to_voxel_size);
 
 #endif

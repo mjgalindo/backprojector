@@ -152,61 +152,59 @@ void cuda_backprojection_impl(float *transient_data,
 }
 
 __global__
-void cuda_complex_backprojection_impl(cuComplex *transient_data,
-									  uint32_t *T,
-									  uint32_t *num_pairs,
-									  pointpair *scanned_pairs,
-									  float *camera_pos,
-									  float *laser_pos,
-									  float *voxel_volume,
-									  float *volume_zero_pos,
-									  float *voxel_inc,
-									  float *t0,
-									  float *deltaT,
-									  uint32_t *voxels_per_side,
-									  uint32_t *kernel_voxels)
+void rescale_image(const float* input_image,
+				   const uint32_t* input_size,
+				   float* output_image,
+				   const uint32_t* output_size,
+				   const uint32_t* bins)
 {
-	uint32_t block_id, voxel_id, xyz[3];
-	advance_block(voxels_per_side, kernel_voxels, block_id, xyz, voxel_id);
+	uint32_t work_rows = output_size[0] / gridDim.x;
+	uint32_t work_cols = output_size[1] / blockDim.x;
 
-	// If the block is outside the volume don't do anything
-	if ((xyz[0] >= voxels_per_side[0]) | (xyz[1] >= voxels_per_side[1]) | (xyz[2] >= voxels_per_side[2]))
-		return;
-		
-	extern __shared__ cuDoubleComplex local_array2[];
-	cuDoubleComplex& radiance_sum = local_array2[threadIdx.x];
-	radiance_sum = make_cuDoubleComplex(0.0, 0.0);
-
-	
-	// Don't run if the current voxel is not 0. This means the current block has already finished.
-	if (voxel_volume[voxel_id] == 0.0)
+	for (uint32_t y = blockIdx.x * work_rows; y < blockIdx.x * work_rows + work_rows; ++y)
 	{
-		float voxel_position[3] = {
-			volume_zero_pos[0] + voxel_inc[0] * xyz[0] + voxel_inc[3] * xyz[1] + voxel_inc[6] * xyz[2],
-			volume_zero_pos[1] + voxel_inc[1] * xyz[0] + voxel_inc[4] * xyz[1] + voxel_inc[7] * xyz[2],
-			volume_zero_pos[2] + voxel_inc[2] * xyz[0] + voxel_inc[5] * xyz[1] + voxel_inc[8] * xyz[2]};
-
-		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
+		for (uint32_t x = threadIdx.x * work_cols; x < max(output_size[1], threadIdx.x * work_cols + work_cols); ++x)
 		{
-			uint32_t pair_index = i * blockDim.x + threadIdx.x;
-			float total_distance;
-			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
-			uint32_t time_index = round((total_distance - *t0) / *deltaT);
-			uint32_t tdindex = pair_index * *T + time_index;
+			double sum = 0.0;
+			uint32_t input_x = x * *bins;
+			uint32_t from = min(0u, input_x - *bins / 2);
+			uint32_t to = max(input_x + *bins / 2, input_size[1]);
+			for (uint32_t time_bin = from; time_bin < to; time_bin++)
+			{
+				sum += input_image[y*input_size[1]+time_bin];
+			}
+			output_image[y*output_size[1]+x] = sum;
+		}
+	}
+}
 
-			radiance_sum = cuCadd(radiance_sum, cuComplexFloatToDouble(transient_data[tdindex])); // * distance_attenuation;
-		}
-	}
-    __syncthreads();
-	if (threadIdx.x == 0)
+void rescale_image_cpu(const float* input_image,
+					   const uint32_t input_size[2],
+					   float* output_image,
+					   const uint32_t output_size[2],
+					   const uint32_t bins)
+{
+	for (uint32_t y = 0; y < output_size[0]; ++y)
 	{
-		// Compute the reduction in a single thread and write it
-		for (int i = 1; i < blockDim.x; i++) {
-			local_array2[0] = cuCadd(local_array2[0], local_array2[i]);
+		for (uint32_t x = 0; x < output_size[1]; ++x)
+		{
+			double sum = 0.0;
+			uint32_t from = min(0u, x - bins / 2);
+			uint32_t to = max(input_size[1], x + bins / 2);
+			for (uint32_t time_bin = from; time_bin < to; time_bin++)
+			{
+				sum += input_image[y*input_size[1]+time_bin];
+			}
+			output_image[y*output_size[1]] = sum;
 		}
-		voxel_volume[voxel_id] = cuCreal(local_array2[0]);
 	}
-    __syncthreads();
+}
+
+void save_array(std::string name, float* buff, uint32_t tot_size)
+{
+	std::ofstream of(name, std::ios::binary);
+	of.write((char*)buff, tot_size*sizeof(float));
+	of.close();
 }
 
 void call_cuda_backprojection(const float* transient_chunk,
@@ -219,11 +217,52 @@ void call_cuda_backprojection(const float* transient_chunk,
                               const float* volume_zero_pos,
                               const float* voxel_inc,
                               float t0,
-                              float deltaT)
+							  float deltaT,
+							  bool rescale_to_voxel_size)
 {
 	thrust::device_vector<float> transient_chunk_gpu(transient_chunk, transient_chunk + transient_size);
-	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
+
+	if (rescale_to_voxel_size)
+	{
+		float diagonal = std::sqrt(voxel_inc[0] * voxel_inc[0] +
+								   voxel_inc[1] * voxel_inc[1] +
+								   voxel_inc[2] * voxel_inc[2]);
+
+		// We'll be reducing the time dimension scaling_factor times
+		float scaling_factor = diagonal / deltaT;
+		// Scaling to a bigger image is the opposite of what we'd want.
+		// In such a case the voxel resolution is already too high
+		if (scaling_factor > 1) 
+		{
+			uint32_t new_T = T / scaling_factor;
+
+			thrust::device_vector<float> new_transient(new_T * num_pairs);
+			thrust::device_vector<uint32_t> orig_size({num_pairs, T});
+			thrust::device_vector<uint32_t> new_size(num_pairs, new_T);
+			thrust::device_vector<uint32_t> bins({(uint32_t) scaling_factor});
+
+			std::cout << "RESCALING " << num_pairs << 'x' << T << " IMAGE to " << num_pairs << 'x' << new_T << "... " << std::flush;
+			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+			rescale_image<<<8192, 16>>>(
+				thrust::raw_pointer_cast(&transient_chunk_gpu[0]),
+				thrust::raw_pointer_cast(&orig_size[0]),
+				thrust::raw_pointer_cast(&new_transient[0]),
+				thrust::raw_pointer_cast(&new_size[0]),
+				thrust::raw_pointer_cast(&bins[0])
+			);
+			std::cout << "DONE!" << std::endl;
+			thrust::host_vector<float> chunk_cpy = transient_chunk_gpu;
+			save_array("original.chunk", chunk_cpy.data(), transient_size);
+			transient_chunk_gpu = std::move(new_transient);
+			save_array("comp.chunk", chunk_cpy.data(), num_pairs*new_T);
+			deltaT = deltaT * scaling_factor;
+			T = new_T;
+			std::cout << "New deltaT " << deltaT << std::endl;
+		}
+	}
+
+	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
 	thrust::device_vector<pointpair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
 	thrust::device_vector<float> camera_pos_gpu(camera_position, camera_position + 3);

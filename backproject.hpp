@@ -409,7 +409,7 @@ xt::xarray<float> gpu_backproject(
                              volume_zero_pos.data(),
                              voxel_inc.data(),
                              t0,
-                             deltaT);
+                             deltaT, true);
 
     return voxel_volume;
 }
