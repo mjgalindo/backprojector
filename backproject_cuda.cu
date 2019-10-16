@@ -350,18 +350,25 @@ void convolve1d(const float* transient_in,
 				const uint32_t* transient_shape,
 				const float* kernel,
 				const uint32_t* kernel_size,
-				float* convolved_out)
+				float* convolved_out,
+				uint32_t *step)
 {
 	const int num_points = transient_shape[0];
 	const int T = transient_shape[1];
-
+	const int row = *step * num_points / gridDim.x + blockIdx.x;
 	for (int tId = 0; tId < T / blockDim.x; tId++)
 	{
-		const int id = blockIdx.x*num_points+blockIdx.x+tId*threadIdx.x;
+		const int time_id = (tId * blockDim.x) + threadIdx.x;
+		if (time_id > T) continue;
+		const int id = row * T + time_id;
 		convolved_out[id] = 0;
 		for (int k = 0; k < *kernel_size; k++)
 		{
-			convolved_out[id] += transient_in[id] * kernel[k];
+			const int t_index_in = time_id + k - *kernel_size / 2;
+			if (t_index_in >= 0 && t_index_in < T)
+			{
+				convolved_out[id] += transient_in[row * T + t_index_in] * kernel[*kernel_size-k-1];
+			}
 		}
 	}
 }
@@ -378,19 +385,22 @@ void call_cuda_convolve1d(const float* transient_in,
 	thrust::device_vector<float> kernel_gpu(kernel, kernel + kernel_size);
 	thrust::device_vector<uint32_t> kernel_size_gpu(&kernel_size, &kernel_size + 1);
 	thrust::device_vector<float> convolved_out_gpu(transient_total);
-	std::cout << transient_shape[0] << ' ' << transient_shape[1] << std::endl;
-	std::cout << kernel_size << std::endl;
-	dim3 xyz_blocks(transient_shape[0], 1, 1);
-	dim3 threads_in_block(transient_shape[1], 1, 1);
-	std::cout << "CONVOLUTION DONE " << transient_in << " " << convolved_out << " " << convolved_out[0] << " " << convolved_out_gpu[0] << std::endl;
-	convolve1d<<<xyz_blocks, threads_in_block>>>(
-		thrust::raw_pointer_cast(&transient_in_gpu[0]),
-		thrust::raw_pointer_cast(&transient_shape_gpu[0]),
-		thrust::raw_pointer_cast(&kernel_gpu[0]),
-		thrust::raw_pointer_cast(&kernel_size_gpu[0]),
-		thrust::raw_pointer_cast(&convolved_out_gpu[0]));
-	std::cout << "CONVOLUTION DONE " << transient_in << " " << convolved_out << " " << convolved_out[0] << " " << convolved_out_gpu[0] << std::endl;
+	thrust::device_vector<uint32_t> step_gpu(1);
 
-	thrust::copy(thrust::raw_pointer_cast(&convolved_out_gpu[0]), thrust::raw_pointer_cast(&convolved_out_gpu[0])+transient_total, convolved_out);
-	std::cout << "COPY DONE " << convolved_out[0] << std::endl;
+	dim3 xyz_blocks(std::min({256u, transient_shape[0]}), 1, 1);
+	dim3 threads_in_block(std::min({512u, transient_shape[1]}), 1, 1);
+	for (int step = 0; step < transient_shape[0] / xyz_blocks.x; step++)
+	{
+		step_gpu[0] = step;
+		convolve1d<<<xyz_blocks, threads_in_block>>>(
+			thrust::raw_pointer_cast(&transient_in_gpu[0]),
+			thrust::raw_pointer_cast(&transient_shape_gpu[0]),
+			thrust::raw_pointer_cast(&kernel_gpu[0]),
+			thrust::raw_pointer_cast(&kernel_size_gpu[0]),
+			thrust::raw_pointer_cast(&convolved_out_gpu[0]),
+			thrust::raw_pointer_cast(&step_gpu[0]));
+	}
+	cudaDeviceSynchronize();
+	
+	thrust::copy(convolved_out_gpu.begin(), convolved_out_gpu.end(), convolved_out);
 }

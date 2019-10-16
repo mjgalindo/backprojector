@@ -416,7 +416,8 @@ xt::xarray<float> gpu_backproject(
 
 
 void gpu_convolve1d(xt::xarray<float>& transient_data,
-                    xt::xarray<float>& kernel)
+                    xt::xarray<float>& kernel,
+                    xt::xarray<float>& transient_output)
 {
 
     std::vector<uint32_t> tdata_shape = {(uint32_t) transient_data.shape()[0], (uint32_t) transient_data.shape()[1]};
@@ -426,7 +427,7 @@ void gpu_convolve1d(xt::xarray<float>& transient_data,
                          tdata_shape.data(),
                          kernel.data(),
                          kernel_shape,
-                         transient_data.data());
+                         transient_output.data());
 }
 
 } // namespace bp

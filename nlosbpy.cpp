@@ -56,13 +56,13 @@ inline xt::pyarray<float> backproject(
     }
 }
 
-inline void convolve1d(const xt::pyarray<float> &transient_data,
-                       const xt::pyarray<float> &kernel)
+inline xt::xarray<float> convolve1d(const xt::pyarray<float> &transient_data,
+                                    const xt::pyarray<float> &kernel)
 {
     xt::xarray<float> tdcpy = transient_data;
     xt::xarray<float> kcpy = kernel;
-    bp::gpu_convolve1d(tdcpy,
-                       kcpy);
+    bp::gpu_convolve1d(tdcpy, kcpy, tdcpy);
+    return tdcpy;
 }
 
 // Python Module and Docstrings
