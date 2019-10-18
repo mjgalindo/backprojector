@@ -8,7 +8,6 @@
 #include <H5Cpp.h>
 #include <chrono>
 
-#ifdef USE_XTENSOR
 #include <xtensor/xarray.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xadapt.hpp>
@@ -17,56 +16,10 @@
 #include <xtensor/xfunction.hpp>
 #include <xtensor/xview.hpp>
 #include <xtensor/xmath.hpp>
-
 #include "xtensor/xfixed.hpp"
 #include "xtensor/xnoalias.hpp"
 #include "xtensor/xstrided_view.hpp"
 #include "xtensor/xtensor.hpp"
-#define array_type xt::xarray
-#else
-template <typename T>
-struct simple_tensor {
-    std::vector<uint32_t> shape;
-    T *buff;
-    uint32_t total_elements;
-    
-    // Prints the nd-array
-    void print() {
-        uint32_t depth = 0;
-        using std::cout;
-        uint32_t dims = this->shape.size();
-        std::vector<uint32_t> dim_ctrs(dims);
-        for (uint32_t i = 0; i < this->total_elements; i++) {
-            for (int dc = dims-1; dc >= 0; dc--) {
-                if (dim_ctrs[dc] == this->shape[dc]) {
-                    cout << "}";
-                    dim_ctrs[dc] = 0;
-                    dim_ctrs[dc-1]++;
-                    depth--;
-                } else {
-                    if (dc != dims-1) cout << ",\n";
-                    break;
-                }
-            }
-            if (depth < dims) {
-                for (int c = 0; c < depth; c++) cout << ' ';
-            }
-            while (depth < dims) {
-                depth++;
-                cout << "{";
-            }
-            cout << buff[i];
-            dim_ctrs[dims-1]++;
-            if (dim_ctrs[dims-1] != this->shape[dims-1]) cout << ", ";
-        }
-        for (int dc = dims-1; dc >= 0; dc--) {
-            cout << '}';
-        }
-        cout << '\n';
-    }
-};
-#define array_type simple_tensor
-#endif
 
 class NLOSData {
     private:
@@ -91,7 +44,7 @@ class NLOSData {
     const std::string DS_IS_CONFOCAL = "isConfocal";
 
     template <typename T>
-    array_type<T> load_field_array(const H5::DataSet &dataset) {
+    xt::xarray<T> load_field_array(const H5::DataSet &dataset) {
         H5T_class_t type_class = dataset.getTypeClass(); // Check the data type
         H5::DataSpace dataspace = dataset.getSpace();
         int rank = dataspace.getSimpleExtentNdims();
@@ -112,22 +65,12 @@ class NLOSData {
                 ptype = H5::PredType::NATIVE_FLOAT;
         }
         dataset.read(buff, ptype);
-        #ifdef USE_XTENSOR
-        array_type<T> retval = xt::adapt(buff, num_elements, xt::acquire_ownership(), dimensions);
-        #else
-        array_type<T> retval;
-        retval.buff = buff;
-        retval.total_elements = num_elements;
-        retval.shape.resize(rank);
-        for (int i = 0; i < rank; i++) {
-            retval.shape[i] = dimensions[i];
-        }
-        #endif
+        xt::xarray<T> retval = xt::adapt(buff, num_elements, xt::acquire_ownership(), dimensions);
         return retval;
     }
 
     template <typename T>
-    array_type<T> load_transient_data_dataset(const H5::DataSet &dataset, 
+    xt::xarray<T> load_transient_data_dataset(const H5::DataSet &dataset, 
                                               const std::vector<uint32_t>& bounces,
                                               bool sum_bounces=false,
                                               bool row_major=false) {
@@ -164,24 +107,13 @@ class NLOSData {
         H5::DataSpace mspace = H5::DataSpace(rank, dimensions.data());
 
         dataset.read(buff, ptype, mspace, dataspace);
-        #ifdef USE_XTENSOR
-        array_type<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
+        xt::xarray<T> retval = xt::adapt(buff, num_elements, xt::no_ownership(), dimensions);
         if (sum_bounces && bounces.size() > 1)
         {
             dimensions[bounce_axis] = 1;
             retval = xt::sum(retval, {bounce_axis});
             retval.reshape(dimensions);
         }
-		#else
-        array_type<T> retval;
-        retval.buff = buff;
-        retval.total_elements = num_elements;
-        retval.shape.resize(rank);
-        for (int i = 0; i < rank; i++) {
-            retval.shape[i] = dimensions[i];
-        }
-        assert(!sum_bounces);
-        #endif
         return retval;
     }
 
@@ -228,33 +160,33 @@ class NLOSData {
     }
     
     // Spad capture volume
-    array_type<float> data;
+    xt::xarray<float> data;
 
     // Camera/Spad
-    array_type<float> camera_grid_positions; // Position of every recorded point of the grid
-    array_type<float> camera_grid_normals; // Normal of every recorded point of the grid
-    array_type<float> camera_position; // Camera origin
-    array_type<float> camera_grid_dimensions; // Dimensions of the camera point grid
-    array_type<float> camera_grid_points; // Number of capture points in the grid in X and Y.
+    xt::xarray<float> camera_grid_positions; // Position of every recorded point of the grid
+    xt::xarray<float> camera_grid_normals; // Normal of every recorded point of the grid
+    xt::xarray<float> camera_position; // Camera origin
+    xt::xarray<float> camera_grid_dimensions; // Dimensions of the camera point grid
+    xt::xarray<float> camera_grid_points; // Number of capture points in the grid in X and Y.
 
     // Laser
-    array_type<float> laser_grid_positions; // Position of every traced point of the grid
-    array_type<float> laser_grid_normals; // Normal of every traced point of the grid
-    array_type<float> laser_position; // Laser origin
-    array_type<float> laser_grid_dimensions; // Dimensions of the laser point grid
-    array_type<float> laser_grid_points; // Number of laser points in the grid in X and Y.
+    xt::xarray<float> laser_grid_positions; // Position of every traced point of the grid
+    xt::xarray<float> laser_grid_normals; // Normal of every traced point of the grid
+    xt::xarray<float> laser_position; // Laser origin
+    xt::xarray<float> laser_grid_dimensions; // Dimensions of the laser point grid
+    xt::xarray<float> laser_grid_points; // Number of laser points in the grid in X and Y.
 
     // Scene info
-    array_type<float> hidden_volume_position; // Center of the hidden geometry
-    array_type<float> hidden_volume_rotation; // Hidden geometry rotation with respect 
+    xt::xarray<float> hidden_volume_position; // Center of the hidden geometry
+    xt::xarray<float> hidden_volume_rotation; // Hidden geometry rotation with respect 
     // to the ground truth
     /// These next are arrays for consistency, but they should be single values ///
-    array_type<float> hidden_volume_size; // Dimensions of prism containing the hidden geometry
-    array_type<int> t; // Time resolution
-    array_type<float> t0; // Time at which the captures start 
-    array_type<int> bins;  // Number of time instants recorded (number of columns in the data)
-    array_type<float> deltat;  // Per pixel aperture duration (time resolution)
-    array_type<int> is_confocal; // Boolean value. 1 if the dataset is confocal, 0 if all combinations 
+    xt::xarray<float> hidden_volume_size; // Dimensions of prism containing the hidden geometry
+    xt::xarray<int> t; // Time resolution
+    xt::xarray<float> t0; // Time at which the captures start 
+    xt::xarray<int> bins;  // Number of time instants recorded (number of columns in the data)
+    xt::xarray<float> deltat;  // Per pixel aperture duration (time resolution)
+    xt::xarray<int> is_confocal; // Boolean value. 1 if the dataset is confocal, 0 if all combinations 
     // of laser points and spad points were captured/rendered
 
     bool is_row_major = false;

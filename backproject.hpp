@@ -1,7 +1,6 @@
 #ifndef BACKPROJECT_HPP
 #define BACKPROJECT_HPP
 
-#define USE_XTENSOR
 #define XTENSOR_ENABLE_XSIMD
 
 #include <math.h>
