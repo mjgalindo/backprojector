@@ -13,6 +13,7 @@
 #include <omp.h>
 
 #include "backproject_cuda.hpp"
+#include "octree_volume.hpp"
 
 namespace bp
 {
@@ -42,73 +43,13 @@ struct ppd
     float camera_wall, laser_wall;
 };
 
-class iter3D 
-{
-private:
-    size_t t_x = 0ul, t_y = 0ul, t_z = 0ul;
-    size_t t_length_x, t_length_y, t_length_z, t_total_length;
-    size_t t_current = 0ul;
-
-public:
-    inline size_t current() { return t_current; } 
-    inline size_t total_length() { return t_total_length; }
-    inline size_t x() { return t_x; }
-    inline size_t y() { return t_y; }
-    inline size_t z() { return t_z; }
-
-    iter3D(size_t length_x, size_t length_y, size_t length_z) : 
-        t_length_x(length_x), t_length_y(length_y), t_length_z(length_z), 
-        t_total_length(length_x * length_y * length_z + length_y * length_z + length_z) {}
-    
-    template <class D>
-    iter3D(D lengths) :
-        t_length_x(lengths[0]), t_length_y(lengths[1]), t_length_z(lengths[2]), 
-        t_total_length(lengths[0] * lengths[1] * lengths[2]) {}
-
-    void operator++()
-    {
-        t_current++;
-        if (++t_z == t_length_z)
-        {
-            t_z = 0ul;
-            if (++t_y == t_length_y)
-            {
-                t_y = 0ul;
-                ++t_x;
-                // Bounds check for x need to be handled by the user
-            }
-        }
-    }
-
-    void jump_to(size_t id)
-    {
-        t_z = id % t_length_z;
-        id = id / t_length_z;
-        t_y = id % t_length_y;
-        id = id / t_length_y;
-        t_x = id;
-    }
-};
-
 void classic_backprojection(const xt::xarray<float>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            const xt::xarray<float>& volume_position,
-                            const xt::xarray<float>& volume_size,
-                            const xt::xarray<float>& voxel_size,
-                            xt::xarray<float>& volume,
+                            octree_volume<float>& volume,
                             float t0, float deltaT, uint32_t T)
 {
-    std::array<size_t, 3> voxels_per_side {volume.shape()[0], volume.shape()[1], volume.shape()[2]};
-
-    // Instead of creating a tensor with the actual 3d points, we can just compute them on the fly.
-    // This may be slower or faster, depending on how expensive memory access to such a volume was (may need testing)
-    auto get_point = [volume_position, volume_size, voxel_size](uint32_t x, uint32_t y, uint32_t z) -> xt::xarray<float> {
-        static auto zero_pos = volume_position - volume_size / 2;
-        return std::move(zero_pos + xt::xarray<float>{x * voxel_size[0], y * voxel_size[1], z * voxel_size[2]});
-    };
-
     int iters = 0;
-    std::cout << '\r' << 0 << '/' << voxels_per_side[0] << std::flush;
+    std::cout << '\r' << 0 << '/' << volume.max_voxels()[0] << std::flush;
 
     // Collapse blocks. Can't be done as is due to the progress bar
     #pragma omp parallel
@@ -117,7 +58,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
         uint32_t threadId = omp_get_thread_num();
         uint32_t nthreads = omp_get_num_threads();
 
-        iter3D iter(voxels_per_side);
+        iter3D iter(volume.max_voxels());
         float thread_iterations = iter.total_length() / (float) nthreads;
         uint32_t from = std::floor(threadId * thread_iterations);
         // If the length is not divisible by the number of threads, 
@@ -131,7 +72,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
             for (int pairId = 0; pairId < point_pairs.size(); pairId++)
             {
                 const auto& pair = point_pairs[pairId];
-                const xt::xarray<float> voxel_position = get_point(iter.x(), iter.y(), iter.z());
+                const xt::xarray<float> voxel_position = volume.position_at(iter);
                 const float wall_voxel_wall_distance = distance(pair.laser, voxel_position) +
                                                        distance(voxel_position, pair.camera);
                 float total_distance = pair.laser_wall + wall_voxel_wall_distance + pair.camera_wall;
@@ -141,17 +82,17 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                     radiance_sum += transient_data(pairId, time_index);
                 }
             }
-            volume(iter.x(), iter.y(), iter.z()) = radiance_sum;
+            volume(iter, 5) = radiance_sum;
             ++iter;
-            if (threadId == 0 && id % voxels_per_side[1] * voxels_per_side[2] == 0)
+            if (threadId == 0 && id % volume.max_voxels()[1] * volume.max_voxels()[2] == 0)
             {
-                uint32_t slices_done = (nthreads * id) / (voxels_per_side[1] * voxels_per_side[2]);
-                slices_done = slices_done > voxels_per_side[0] ? voxels_per_side[0] : slices_done;
-                std::cout << '\r' << slices_done << '/' << voxels_per_side[0] << std::flush;
+                uint32_t slices_done = (nthreads * id) / (volume.max_voxels()[1] * volume.max_voxels()[2]);
+                slices_done = slices_done > volume.max_voxels()[0] ? volume.max_voxels()[0] : slices_done;
+                std::cout << '\r' << slices_done << '/' << volume.max_voxels()[0] << std::flush;
             }
         }
     }
-    std::cout << '\r' << voxels_per_side[0] << '/' << voxels_per_side[0] << std::endl;
+    std::cout << '\r' << volume.max_voxels()[0] << '/' << volume.max_voxels()[0] << std::endl;
 }
 
 xt::xarray<float> backproject(
@@ -230,19 +171,22 @@ xt::xarray<float> backproject(
                 float laser_camera_wall = distance(camera_position, camera_point);
                 point_pairs[p].camera_wall = laser_camera_wall;
                 point_pairs[p].laser_wall = laser_camera_wall;
-                p++;            
+                p++;
             }
         }
     }
 
     int T = transient_data.shape()[transient_data.shape().size()-1];
-    xt::xarray<float> volume = xt::zeros<float>(voxels_per_side);
+
+    //////////////
+    octree_volume<float> ov(voxels_per_side, volume_size, volume_position);
+    //////////////
 
     classic_backprojection(transient_data, 
                            point_pairs,
-                           volume_position, volume_size, 
-                           voxel_size, volume,
+                           ov,
                            t0, deltaT, T);
+    xt::xarray<float> volume = ov.volume();
     
     return volume;
 }
