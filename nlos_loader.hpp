@@ -75,6 +75,16 @@ class NLOSData {
                                               bool sum_bounces=false,
                                               bool row_major=false) {
         assert(bounces.size() > 0);
+        // Default to looking for the third bounce in the 2nd position
+        int third_bounce = 1;
+        if (dataset.attrExists("third_bounce"))
+        {
+            H5::Attribute att(dataset.openAttribute("third_bounce"));
+            H5::IntType itype = att.getIntType();
+            att.read(itype, &third_bounce);
+            std::cout << "READ THIRD BOUNCE IS " << third_bounce << std::endl;
+        }
+
         H5::DataSpace dataspace = dataset.getSpace();
         int rank = dataspace.getSimpleExtentNdims();
         std::vector<hsize_t> dimensions(rank);
@@ -97,8 +107,7 @@ class NLOSData {
             dataspace.selectNone();
             for (uint32_t b = 0; b < bounces.size(); b++)
             {
-                // Bounces in the dataset start at 2, so the 3rd bounce is the 1st element
-                offset[bounce_axis] = bounces[b]-2;
+                offset[bounce_axis] = bounces[b] - (3 - third_bounce);
                 dataspace.selectHyperslab(H5S_SELECT_OR, count.data(), offset.data());
             }
         }
