@@ -30,7 +30,8 @@ public:
         m_volume_size = volume_size; 
         m_volume_position = volume_position;
         m_voxel_size = volume_size / voxel_axes;
-        m_data.resize(m_max_voxels);
+        m_data = xt::zeros<T>(m_max_voxels);
+       
     }
 
     xt::xarray<T> volume()
@@ -105,9 +106,10 @@ public:
         return m_max_voxels;
     }
 
-    xt::xarray<T> at_depth(xt::xarray<size_t> xyz, int depth)
+    template <typename TI>
+    inline xt::xarray<TI> at_depth(const xt::xarray<TI>& xyz, int depth)
     {
-        xt::xarray<T> mod = m_max_voxels / (1u << depth);
+        xt::xarray<TI> mod = m_max_voxels / (1u << depth);
         return xyz / mod;
     }
 
