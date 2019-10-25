@@ -64,8 +64,6 @@ public:
     {
         assert(xt::sum(xyz * m_max_voxels)[0] < (*this).total_voxels());
         return m_data(xyz[0], xyz[1], xyz[2]);
-        // TODO: Direct access "may" be faster?
-        // return m_data.data[x * m_max_voxels[1]*  m_max_voxels[2] + y * m_max_voxels[2] + z];
     }
 
     template <typename UT>
@@ -73,8 +71,6 @@ public:
     {
         assert(xt::sum(xyz * m_max_voxels)[0] < (*this).total_voxels());
         return (*this)((*this).at_depth(xyz, depth));
-        // TODO: Direct access "may" be faster?
-        // return m_data.data[x * m_max_voxels[1]*  m_max_voxels[2] + y * m_max_voxels[2] + z];
     }
 
     T& operator()(const iter3D& iter)
