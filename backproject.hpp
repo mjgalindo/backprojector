@@ -67,7 +67,7 @@ double accumulate_radiance(const xt::xarray<float>& transient_data,
 
 void classic_backprojection(const xt::xarray<float>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            octree_volume<float>& volume,
+                            octree_volume<float>& volume, uint32_t depth,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
     int iters = 0;
@@ -111,7 +111,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
     octree_volume<float> ov(volume, volume_size, volume_position);
-    classic_backprojection(transient_data, point_pairs, ov, t0, deltaT, T, verbose);
+    classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T, verbose);
     volume = ov.volume();
 }
 
