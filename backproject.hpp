@@ -8,6 +8,7 @@
 #include <xtensor/xtensor.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xadapt.hpp>
+#include <xtensor/xrandom.hpp>
 #include <xtensor/xcontainer.hpp>
 #include <xtensor/xview.hpp>
 #include <omp.h>
@@ -37,7 +38,7 @@ inline double round(double x)
     return floor(x + 0.5);
 }
 
-struct ppd 
+struct ppd
 {
     std::array<float, 3> camera, laser;
     float camera_wall, laser_wall;
@@ -46,7 +47,7 @@ struct ppd
 double accumulate_radiance(const xt::xarray<float>& transient_data,
                            const std::vector<ppd>& point_pairs,
                            const xt::xarray<float>& voxel_position,
-                           float t0, float deltaT, uint32_t T)
+                           float t0, float deltaT, uint32_t T, float access_width)
 {
     double radiance_sum = 0.0;
     for (int pairId = 0; pairId < point_pairs.size(); pairId++)
@@ -55,8 +56,9 @@ double accumulate_radiance(const xt::xarray<float>& transient_data,
         const float wall_voxel_wall_distance = distance(pair.laser, voxel_position) +
                                                 distance(voxel_position, pair.camera);
         float total_distance = pair.laser_wall + wall_voxel_wall_distance + pair.camera_wall;
-        int time_index = round((total_distance - t0) / deltaT);
-        if (time_index >= 0 && time_index < T)
+        int first_time_index = std::max({0, (int) round((total_distance - access_width / 2 - t0) / deltaT)});
+        int last_time_index = std::min({(int) T-1, (int) round((total_distance + access_width / 2 - t0) / deltaT)});
+        for (int time_index = first_time_index; time_index < last_time_index; time_index++)
         {
             radiance_sum += transient_data(pairId, time_index);
         }
@@ -67,40 +69,62 @@ double accumulate_radiance(const xt::xarray<float>& transient_data,
 
 void classic_backprojection(const xt::xarray<float>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            octree_volume<float>& volume, uint32_t depth,
-                            float t0, float deltaT, uint32_t T, bool verbose=true)
+                            OctreeVolume<float>& volume, uint32_t depth,
+                            float t0, float deltaT, uint32_t T,
+                            float threshold = 0.0f, bool verbose=true)
 {
+    auto max_voxels = volume.max_voxels(depth);
+    xt::xarray<float> voxel_size = volume.voxel_size_at(depth);
+    float voxel_diagonal = xt::sqrt(xt::sum(voxel_size * voxel_size))[0]; 
     int iters = 0;
-    if (verbose) std::cout << '\r' << 0 << '/' << volume.max_voxels()[0] << std::flush;
+    if (verbose) std::cout << '\r' << 0 << '/' << max_voxels[0] << std::flush;
+    int avoided = 0;
 
     // Collapse blocks. Can't be done as is due to the progress bar
-    #pragma omp parallel 
+    #pragma omp parallel shared(avoided)
     {
         // Prepare the parallel range for each thread
         uint32_t threadId = omp_get_thread_num();
         uint32_t nthreads = omp_get_num_threads();
-
-        iter3D iter(volume.max_voxels());
-        float thread_iterations = iter.total_length() / (float) nthreads;
+        iter3D iter(max_voxels);
+        int total_length = iter.total_length();
+        uint32_t thread_iterations = total_length / (float) nthreads;
         uint32_t from = std::floor(threadId * thread_iterations);
         // If the length is not divisible by the number of threads, 
         // the last thread gets less work
         uint32_t to = std::min({(size_t) (from + std::ceil(thread_iterations)), iter.total_length()});
-        
+        int local_avoided = 0;
         iter.jump_to(from);
         for (int id = from; id < to; ++id)
         {
-            volume(iter) = accumulate_radiance(transient_data, point_pairs, volume.position_at(iter), t0, deltaT, T);
-            ++iter;
-            if (verbose && threadId == 0 && id % volume.max_voxels()[1] * volume.max_voxels()[2] == 0)
+            // Skip voxels below the given threshold
+            if (depth == 0 || volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer) >= threshold) 
             {
-                uint32_t slices_done = (nthreads * id) / (volume.max_voxels()[1] * volume.max_voxels()[2]);
-                slices_done = slices_done > volume.max_voxels()[0] ? volume.max_voxels()[0] : slices_done;
-                std::cout << '\r' << slices_done << '/' << volume.max_voxels()[0] << std::flush;
+                float radiance = accumulate_radiance(transient_data, point_pairs,
+                                                     volume.position_at(iter, depth),
+                                                     t0, deltaT, T, voxel_diagonal);
+                volume(iter, OctreeVolume<float>::BuffType::Main) = radiance;
+            }
+            else
+            {
+                avoided++;
+                volume(iter, depth) = NAN; // volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer);
+            }
+            ++iter;
+
+            if (verbose && threadId == 0 && id % max_voxels[1] * max_voxels[2] == 0)
+            {
+                // Update progress estimate
+                uint32_t slices_done = (nthreads * id) / (max_voxels[1] * max_voxels[2]);
+                slices_done = slices_done > max_voxels[0] ? max_voxels[0] : slices_done;
+                std::cout << '\r' << slices_done << '/' << max_voxels[0] << std::flush;
             }
         }
+        #pragma omp critical
+        avoided += local_avoided;
     }
-    if (verbose) std::cout << '\r' << volume.max_voxels()[0] << '/' << volume.max_voxels()[0] << std::endl;
+    if (verbose) std::cout << '\r' << max_voxels[0] << '/' << max_voxels[0] << std::endl 
+                           << "Avoided computing " << avoided << " blocks." << std::endl;
 }
 
 void classic_backprojection(const xt::xarray<float>& transient_data, 
@@ -110,47 +134,50 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                             xt::xarray<float>& volume,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
-    octree_volume<float> ov(volume, volume_size, volume_position);
-    classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T, verbose);
+    OctreeVolume<float> ov(volume, volume_size, volume_position);
+    classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T, 0.0f, verbose);
     volume = ov.volume();
 }
 
 void octree_backprojection(const xt::xarray<float>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            octree_volume<float>& volume,
+                            OctreeVolume<float>& volume,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
-    int iters = 0;
-    if (verbose) std::cout << '\r' << 0 << '/' << volume.max_voxels()[0] << std::flush;
-
-    // Collapse blocks. Can't be done as is due to the progress bar
-    #pragma omp parallel 
+    int depth = 3;
+    float threshold = -1.0f;
+    volume.reset_buffer();
+    while (depth <= volume.max_depth())
     {
-        // Prepare the parallel range for each thread
-        uint32_t threadId = omp_get_thread_num();
-        uint32_t nthreads = omp_get_num_threads();
+        auto max_voxels = volume.max_voxels(depth);
+        std::cout << "Backprojecting depth " << depth << " with threshold " << threshold << " size " << max_voxels << std::endl;
+        classic_backprojection(transient_data, point_pairs, volume, depth, t0, deltaT, T, threshold, verbose);
+        auto shape = xt::view(volume.volume(), 
+                                      xt::range(0, max_voxels[0]), 
+                                      xt::range(0, max_voxels[1]),
+                                      xt::range(0, max_voxels[2])).shape();
 
-        iter3D iter(volume.max_voxels());
-        float thread_iterations = iter.total_length() / (float) nthreads;
-        uint32_t from = std::floor(threadId * thread_iterations);
-        // If the length is not divisible by the number of threads, 
-        // the last thread gets less work
-        uint32_t to = std::min({(size_t) (from + std::ceil(thread_iterations)), iter.total_length()});
-        
-        iter.jump_to(from);
-        for (int id = from; id < to; ++id)
+        threshold = xt::mean(xt::nan_to_num(xt::view(volume.volume(),
+                                      xt::range(0, max_voxels[0]),
+                                      xt::range(0, max_voxels[1]),
+                                      xt::range(0, max_voxels[2]))))[0] / (xt::mean(max_voxels)[0]/8);
+
+        std::cout << "Volume sum " << xt::nansum(volume.volume())[0] << " " << xt::nansum(xt::view(volume.volume(), 
+                                      xt::range(0, max_voxels[0]),
+                                      xt::range(0, max_voxels[1]),
+                                      xt::range(0, max_voxels[2]))) << std::endl;
+        std::cout << "Buffer sum " << xt::nansum(volume.volume(OctreeVolume<float>::BuffType::Buffer))[0] << " " << xt::nansum(xt::view(volume.volume(OctreeVolume<float>::BuffType::Buffer), 
+                                      xt::range(0, max_voxels[0]),
+                                      xt::range(0, max_voxels[1]),
+                                      xt::range(0, max_voxels[2]))) << std::endl;
+
+        if (depth < volume.max_depth())
         {
-            volume(iter) = accumulate_radiance(transient_data, point_pairs, volume.position_at(iter), t0, deltaT, T);
-            ++iter;
-            if (verbose && threadId == 0 && id % volume.max_voxels()[1] * volume.max_voxels()[2] == 0)
-            {
-                uint32_t slices_done = (nthreads * id) / (volume.max_voxels()[1] * volume.max_voxels()[2]);
-                slices_done = slices_done > volume.max_voxels()[0] ? volume.max_voxels()[0] : slices_done;
-                std::cout << '\r' << slices_done << '/' << volume.max_voxels()[0] << std::flush;
-            }
+            std::cout << "Swapping buffers" << std::endl;
+            volume.swap_buffers();
         }
+        depth++;
     }
-    if (verbose) std::cout << '\r' << volume.max_voxels()[0] << '/' << volume.max_voxels()[0] << std::endl;
 }
 
 std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
@@ -225,7 +252,8 @@ xt::xarray<float> backproject(
     bool is_confocal,
     const xt::xarray<float> &volume_position,
     const xt::xarray<float> volume_size,
-    const xt::xarray<uint32_t> voxels_per_side)
+    const xt::xarray<uint32_t> voxels_per_side,
+    bool use_octree = false)
 {
     xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
 
@@ -253,8 +281,15 @@ xt::xarray<float> backproject(
 
     int T = transient_data.shape()[transient_data.shape().size()-1];
 
-    octree_volume<float> ov(voxels_per_side, volume_size, volume_position);
-    classic_backprojection(transient_data, point_pairs, ov, t0, deltaT, T);
+    OctreeVolume<float> ov(voxels_per_side, volume_size, volume_position);
+    if (use_octree)
+    {
+        octree_backprojection(transient_data, point_pairs, ov, t0, deltaT, T);
+    }
+    else
+    {
+        classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T);
+    }
     
     return ov.volume();
 }
@@ -385,7 +420,8 @@ xt::xarray<float> gpu_backproject(
     const xt::xarray<float> &volume_position,
     const xt::xarray<float> &volume_size,
     xt::xarray<uint32_t> voxels_per_side,
-    bool assume_row_major = false)
+    bool assume_row_major = false,
+    bool use_octree = false)
 {
     auto tdata_shape = transient_data.shape();
     uint32_t T = tdata_shape[assume_row_major ? tdata_shape.size() - 1 : 0];

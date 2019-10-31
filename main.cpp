@@ -56,6 +56,7 @@ int main(int argc, const char *argv[])
     xt::xarray<float> volume_direction = {NAN, NAN, NAN};
     std::string outfile = "";
     bool use_cpu = false;
+    bool use_octree = false;
 
     args::ArgumentParser parser("NLOS dataset backprojector.", "Takes a NLOS dataset and returns an unfiltered backprojection volume.");
     args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
@@ -92,6 +93,7 @@ int main(int argc, const char *argv[])
                                             {'o', "output"}, "");
 
     args::ValueFlag<bool> vf_use_cpu(parser, "use_cpu", "Flag to force CPU backprojection", {"cpu"}, false);
+    args::ValueFlag<bool> vf_use_octree(parser, "use_octree", "Flag to force octree backprojection (CPU only for now)", {"octree"}, false);
 
     try
     {
@@ -104,6 +106,7 @@ int main(int argc, const char *argv[])
         volume_direction = args::get(vf_volume_direction);
         outfile = args::get(vf_outfile);
         use_cpu = args::get(vf_use_cpu);
+        use_octree = args::get(vf_use_octree);
     }
     catch (const args::Completion &e)
     {
@@ -171,7 +174,8 @@ int main(int argc, const char *argv[])
                                  t0, deltaT, is_confocal,
                                  volume_position,
                                  volume_size,
-                                 voxel_resolution);
+                                 voxel_resolution,
+                                 use_octree);
     }
     else
     {
