@@ -92,7 +92,7 @@ public:
 
     uint32_t max_depth() const
     {
-        return xt::amin(xt::log2(m_max_voxels))[0];
+        return xt::amax(xt::log2(m_max_voxels))[0];
     }
 
     template <typename UT>
@@ -157,6 +157,7 @@ public:
 
     xt::xarray<size_t> max_voxels(int depth=-1) const
     {
+        if (depth == max_depth() || depth == -1) return m_max_voxels;
         depth = depth < 0 ? max_depth() : depth;
         xt::xarray<size_t> mod = m_max_voxels / (1u << depth);
         return m_max_voxels / mod;
@@ -165,6 +166,7 @@ public:
     template <typename TI>
     inline xt::xarray<TI> at_depth(const xt::xarray<TI>& xyz, int depth) const
     {
+        if (depth == -1 || depth == max_depth()) return xyz;
         xt::xarray<TI> mod = m_max_voxels / (1u << depth);
         return xyz / mod;
     }

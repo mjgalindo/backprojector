@@ -69,7 +69,7 @@ double accumulate_radiance(const xt::xarray<float>& transient_data,
 
 void classic_backprojection(const xt::xarray<float>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            OctreeVolume<float>& volume, uint32_t depth,
+                            OctreeVolume<float>& volume, int depth,
                             float t0, float deltaT, uint32_t T,
                             float threshold = 0.0f, bool verbose=true)
 {
@@ -79,7 +79,6 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
     int iters = 0;
     if (verbose) std::cout << '\r' << 0 << '/' << max_voxels[0] << std::flush;
     int avoided = 0;
-
     // Collapse blocks. Can't be done as is due to the progress bar
     #pragma omp parallel shared(avoided)
     {
@@ -88,17 +87,18 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
         uint32_t nthreads = omp_get_num_threads();
         iter3D iter(max_voxels);
         int total_length = iter.total_length();
-        uint32_t thread_iterations = total_length / (float) nthreads;
+        float thread_iterations = total_length / (float) nthreads;
         uint32_t from = std::floor(threadId * thread_iterations);
         // If the length is not divisible by the number of threads, 
         // the last thread gets less work
-        uint32_t to = std::min({(size_t) (from + std::ceil(thread_iterations)), iter.total_length()});
+        uint32_t to = from + std::ceil(thread_iterations);
+        if (threadId == nthreads - 1) to = iter.total_length();
         int local_avoided = 0;
         iter.jump_to(from);
         for (int id = from; id < to; ++id)
         {
             // Skip voxels below the given threshold
-            if (depth == 0 || volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer) >= threshold) 
+            if (depth <= 0 || volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer) >= threshold) 
             {
                 float radiance = accumulate_radiance(transient_data, point_pairs,
                                                      volume.position_at(iter, depth),
@@ -135,7 +135,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
     OctreeVolume<float> ov(volume, volume_size, volume_position);
-    classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T, 0.0f, verbose);
+    classic_backprojection(transient_data, point_pairs, ov, -1, t0, deltaT, T, 0.0f, verbose);
     volume = ov.volume();
 }
 
@@ -288,7 +288,7 @@ xt::xarray<float> backproject(
     }
     else
     {
-        classic_backprojection(transient_data, point_pairs, ov, ov.max_depth(), t0, deltaT, T);
+        classic_backprojection(transient_data, point_pairs, ov, -1, t0, deltaT, T);
     }
     
     return ov.volume();
