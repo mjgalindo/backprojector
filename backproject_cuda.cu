@@ -105,7 +105,8 @@ void cuda_backprojection_impl(float *transient_data,
                               float *volume_zero_pos,
                               float *voxel_inc,
                               float *t0,
-                              float *deltaT,
+							  float *deltaT,
+							  float *voxel_footprint,
 							  uint32_t *voxels_per_side,
 							  uint32_t *kernel_voxels)
 {
@@ -123,20 +124,22 @@ void cuda_backprojection_impl(float *transient_data,
 	// Don't run if the current voxel is not 0. This means the current block has already finished.
 	if (voxel_volume[voxel_id] == 0.0)
 	{
-		float voxel_position[] = {volume_zero_pos[0]+voxel_inc[0]*xyz[0],
-								  volume_zero_pos[1]+voxel_inc[1]*xyz[1],
-								  volume_zero_pos[2]+voxel_inc[2]*xyz[2]};
+		float voxel_position[] = {
+			volume_zero_pos[0] + voxel_inc[0] * xyz[0] + voxel_inc[3] * xyz[1] + voxel_inc[6] * xyz[2],
+			volume_zero_pos[1] + voxel_inc[1] * xyz[0] + voxel_inc[4] * xyz[1] + voxel_inc[7] * xyz[2],
+			volume_zero_pos[2] + voxel_inc[2] * xyz[0] + voxel_inc[5] * xyz[1] + voxel_inc[8] * xyz[2]
+		};
 
 		for (uint32_t i = 0; i < *num_pairs / blockDim.x; i++)
 		{
 			uint32_t pair_index = i * blockDim.x + threadIdx.x;
 			float total_distance;
 			compute_distance(voxel_position, laser_pos, camera_pos, &scanned_pairs[pair_index], &total_distance);
-			uint32_t time_index = round((total_distance - *t0) / *deltaT);
-			if (time_index < *T)
+			int32_t min_time_index = max(0, (int32_t) round((total_distance - *t0 - *voxel_footprint / 2) / *deltaT));
+			int32_t max_time_index = min(*T, (int32_t) round((total_distance - *t0 + *voxel_footprint / 2) / *deltaT)) + 1;
+			for (int32_t sample_index = min_time_index; sample_index < max_time_index; sample_index++)
 			{
-				uint32_t tdindex = pair_index * *T + time_index;
-				radiance_sum += transient_data[tdindex]; // * distance_attenuation;
+				radiance_sum += transient_data[pair_index * *T + sample_index];
 			}
 		}
 	}
@@ -348,17 +351,157 @@ void cuda_octree_backprojection_impl(float const *transient_data,
 
 
 void call_cuda_backprojection(const float* transient_chunk,
-                              uint32_t transient_size, uint32_t T,
-                              const std::vector<pointpair> scanned_pairs,
-                              const float* camera_position,
-                              const float* laser_position,
-                              float* voxel_volume,
-                              const uint32_t* voxels_per_side,
-                              const float* volume_zero_pos,
-                              const float* voxel_inc,
-                              float t0,
-                              float deltaT)
+							  uint32_t transient_size, uint32_t T,
+							  const std::vector<pointpair> scanned_pairs,
+							  const float* camera_position,
+							  const float* laser_position,
+							  float* voxel_volume,
+							  const uint32_t* voxels_per_side,
+							  const float* volume_zero_pos,
+							  const float* voxel_inc,
+							  float t0,
+							  float deltaT)
 {
+	thrust::device_vector<float> transient_chunk_gpu(transient_chunk, transient_chunk + transient_size);
+	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
+	uint32_t num_pairs = scanned_pairs.size();
+	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
+	thrust::device_vector<pointpair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
+	thrust::device_vector<float> camera_pos_gpu(camera_position, camera_position + 3);
+	thrust::device_vector<float> laser_pos_gpu(laser_position, laser_position + 3);
+	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
+	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
+	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
+	thrust::device_vector<float> voxel_inc_gpu(voxel_inc, voxel_inc + 9);
+	thrust::device_vector<float> t0_gpu(&t0, &t0 + 1);
+	thrust::device_vector<float> deltaT_gpu(&deltaT, &deltaT + 1);
+	thrust::device_vector<float> voxel_footprint_gpu(1);
+	voxel_footprint_gpu[0] = 0.0f;
+	thrust::device_vector<uint32_t> voxels_per_side_gpu(voxels_per_side, voxels_per_side + 3);
+
+	{
+		cudaError_t error = cudaGetLastError();
+		if (error != cudaSuccess)
+		{
+			// print the CUDA error message and exit
+			printf("CUDA error: %s\n", cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+	int blockSize, minGridSize;
+	cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, cuda_backprojection_impl, sizeof(double), 0); 
+	{
+		cudaError_t error = cudaGetLastError();
+		if (error != cudaSuccess)
+		{
+			// print the CUDA error message and exit
+			printf("CUDA error: %s\n", cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+	// Limit blocksize to the number of pairs (or else backprojection will fail!)
+	blockSize = std::min({(uint32_t) blockSize, num_pairs, 256u});
+
+	// Force a smaller grid size to make each kernel run very short.
+	minGridSize = 16;
+
+	std::vector<uint32_t> kernel_voxels(minGridSize * minGridSize * minGridSize * 3);
+	for (int x = 0; x < minGridSize; x++)
+	for (int y = 0; y < minGridSize; y++)
+	for (int z = 0; z < minGridSize; z++)
+	{
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 0] = x;
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 1] = y;
+		kernel_voxels[(x*minGridSize*minGridSize+y*minGridSize+z)*3 + 2] = z;
+	}
+
+	uint32_t *kernel_voxels_gpu;
+	const uint32_t num_blocks_per_kernel_run = minGridSize*minGridSize*minGridSize;
+	cudaMalloc((void **)&kernel_voxels_gpu, 3*num_blocks_per_kernel_run*sizeof(uint32_t));
+	cudaMemcpy(kernel_voxels_gpu, kernel_voxels.data(), 3*num_blocks_per_kernel_run*sizeof(uint32_t), cudaMemcpyHostToDevice);
+
+	dim3 xyz_blocks(minGridSize, minGridSize, minGridSize);
+	dim3 threads_in_block(blockSize, 1, 1);
+	uint32_t number_of_runs = std::ceil(std::max(std::max(voxels_per_side[0], voxels_per_side[1]), voxels_per_side[2]) / (float) minGridSize);
+	number_of_runs = number_of_runs * number_of_runs * number_of_runs;
+
+	std::cout << "Backprojecting on the GPU using the \"optimal\" configuration" << std::endl;
+	std::cout << "# Blocks: " << xyz_blocks.x << ' ' << xyz_blocks.y << ' ' << xyz_blocks.z << std::endl;
+	std::cout << "# Threads per block: " << threads_in_block.x << ' ' << threads_in_block.y << ' ' << threads_in_block.z << std::endl;
+	std::cout << "# Kernel calls: " << number_of_runs << std::endl;
+
+	auto start = std::chrono::steady_clock::now();
+	#if __linux__
+	tqdm bar;
+	bar.set_theme_braille();
+	#else
+	std::cout << 0 << " / " << number_of_runs << std::flush;
+	#endif
+	for (uint32_t r = 0; r < number_of_runs; r++)
+	{
+		auto start = std::chrono::steady_clock::now();
+		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(double)>>>(
+		thrust::raw_pointer_cast(&transient_chunk_gpu[0]),
+		thrust::raw_pointer_cast(&T_gpu[0]),
+		thrust::raw_pointer_cast(&num_pairs_gpu[0]),
+		thrust::raw_pointer_cast(&scanned_pairs_gpu[0]),
+		thrust::raw_pointer_cast(&camera_pos_gpu[0]),
+		thrust::raw_pointer_cast(&laser_pos_gpu[0]),
+		thrust::raw_pointer_cast(&voxel_volume_gpu[0]),
+		thrust::raw_pointer_cast(&volume_zero_pos_gpu[0]),
+		thrust::raw_pointer_cast(&voxel_inc_gpu[0]),
+		thrust::raw_pointer_cast(&t0_gpu[0]),
+		thrust::raw_pointer_cast(&deltaT_gpu[0]),
+		thrust::raw_pointer_cast(&voxel_footprint_gpu[0]),
+		thrust::raw_pointer_cast(&voxels_per_side_gpu[0]),
+		thrust::raw_pointer_cast(&kernel_voxels_gpu[0]));
+
+		cudaDeviceSynchronize();
+		#if __linux__
+		bar.progress(r, number_of_runs);
+		#else
+		std::cout << '\r' << r+1 << " / " << number_of_runs << std::flush;
+		#endif
+	}
+	cudaDeviceSynchronize();
+	#if __linux__
+	bar.finish();
+	#else
+	std::cout << std::endl;
+	#endif
+	auto end = std::chrono::steady_clock::now();
+	std::cout << "Backprojection took "
+			  << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+			  << " ms" << std::endl;
+
+	// check for errors
+	cudaError_t error = cudaGetLastError();
+	if (error != cudaSuccess)
+	{
+		// print the CUDA error message and exit
+		printf("CUDA error: %s\n", cudaGetErrorString(error));
+		exit(1);
+	}
+
+	thrust::copy(voxel_volume_gpu.begin(), voxel_volume_gpu.end(), voxel_volume);
+}
+
+
+void call_cuda_octree_backprojection(const float* transient_chunk,
+									 uint32_t transient_size, uint32_t T,
+									 const std::vector<pointpair> scanned_pairs,
+									 const float* camera_position,
+									 const float* laser_position,
+									 float* voxel_volume,
+									 const uint32_t* voxels_per_side,
+									 const float* volume_zero_pos,
+									 const float* voxel_inc,
+									 float t0,
+									 float deltaT)
+{
+	std::cout << "GPU OCTREE BP NOT WORKING YET\n";
 	thrust::device_vector<float> transient_chunk_gpu(transient_chunk, transient_chunk + transient_size);
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();

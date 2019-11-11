@@ -27,4 +27,18 @@ void call_cuda_backprojection(const float* transient_chunk,
                               float t0,
                               float deltaT);
 
+MAKE_DLL_EXPORT
+void call_cuda_octree_backprojection(const float* transient_chunk,
+                              uint32_t transient_size, uint32_t T,
+                              const std::vector<pointpair> scanned_pairs,
+                              const float* camera_position,
+                              const float* laser_position,
+                              float* voxel_volume,
+                              const uint32_t* voxels_per_side,
+                              const float* volume_zero_pos,
+                              const float* voxel_inc,
+                              float t0,
+                              float deltaT);
+
+
 #endif

@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <xtensor/xtensor.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/xio.hpp>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xrandom.hpp>
@@ -107,7 +108,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
             }
             else
             {
-                avoided++;
+                local_avoided++;
                 volume(iter, depth) = NAN; // volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer);
             }
             ++iter;
@@ -120,7 +121,7 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                 std::cout << '\r' << slices_done << '/' << max_voxels[0] << std::flush;
             }
         }
-        #pragma omp critical
+        #pragma omp atomic
         avoided += local_avoided;
     }
     if (verbose) std::cout << '\r' << max_voxels[0] << '/' << max_voxels[0] << std::endl 
@@ -421,6 +422,7 @@ xt::xarray<float> gpu_backproject(
     const xt::xarray<float> &volume_size,
     xt::xarray<uint32_t> voxels_per_side,
     bool assume_row_major = false,
+    const xt::xarray<float> wall_normal=xt::xarray<float>{0,0,0},
     bool use_octree = false)
 {
     auto tdata_shape = transient_data.shape();
@@ -516,13 +518,26 @@ xt::xarray<float> gpu_backproject(
                     }
     }
 
-    xt::xarray<float> volume_zero_pos = volume_position - volume_size / 2;
-    xt::xarray<float> voxel_inc = volume_size / (voxels_per_side - 1);
-    for (uint32_t i = 0; i < 3; i++)
-        if (voxels_per_side[i] == 1)
-            voxel_inc[i] = volume_size[i];
+    // Compute the reconstruction volume so that it is aligned to the relay-wall
+    xt::xarray<float> x({1,0,0});
+    xt::xarray<float> y({0,1,0});
+    xt::xarray<float> z({0,0,1});
 
-    // Copy all the necessary information to the device
+    if (xt::any(xt::not_equal(wall_normal, 0.0f)))
+    {   
+        y = -wall_normal;
+        x = xt::linalg::cross(y,z);
+        z = xt::linalg::cross(y,x);
+        x = x / xt::sqrt(xt::sum(x*x));
+        y = y / xt::sqrt(xt::sum(y*y));
+        z = z / xt::sqrt(xt::sum(z*z));
+    }
+
+    xt::xarray<float> volume_zero_pos = volume_position - volume_size / 2;
+    xt::xarray<float> voxel_inc = xt::stack(xt::xtuple(
+                                    (x * volume_size) / (voxels_per_side - 1), 
+                                    (y * volume_size) / (voxels_per_side - 1),
+                                    (z * volume_size) / (voxels_per_side - 1)));
 
     std::cout << "Slicing transient data chunk" << std::flush;
 
@@ -538,17 +553,34 @@ xt::xarray<float> gpu_backproject(
 
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
     xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side);
-    call_cuda_backprojection(transient_chunk.data(),
-                             total_transient_size,
-                             chunkedT,
-                             scanned_pairs,
-                             camera_position.size() > 1 ? camera_position.data() : nullptr,
-                             laser_position.size() > 1 ? laser_position.data() : nullptr,
-                             voxel_volume.data(),
-                             voxels_per_side.data(),
-                             volume_zero_pos.data(),
-                             voxel_inc.data(),
-                             t0, deltaT);
+    if (use_octree)
+    {
+        call_cuda_octree_backprojection(transient_chunk.data(),
+                                 total_transient_size,
+                                 chunkedT,
+                                 scanned_pairs,
+                                 camera_position.size() > 1 ? camera_position.data() : nullptr,
+                                 laser_position.size() > 1 ? laser_position.data() : nullptr,
+                                 voxel_volume.data(),
+                                 voxels_per_side.data(),
+                                 volume_zero_pos.data(),
+                                 voxel_inc.data(),
+                                 t0, deltaT);
+    }
+    else
+    {
+        call_cuda_backprojection(transient_chunk.data(),
+                                 total_transient_size,
+                                 chunkedT,
+                                 scanned_pairs,
+                                 camera_position.size() > 1 ? camera_position.data() : nullptr,
+                                 laser_position.size() > 1 ? laser_position.data() : nullptr,
+                                 voxel_volume.data(),
+                                 voxels_per_side.data(),
+                                 volume_zero_pos.data(),
+                                 voxel_inc.data(),
+                                 t0, deltaT);
+    }    
 
     return voxel_volume;
 }
