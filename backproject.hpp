@@ -318,19 +318,21 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
                                              float wavelength, float deltaT, uint32_t times=4)
 {
     // Time bins covered by the phasor pulse
-    auto pulse_size = (int)(round(times * wavelength) / deltaT);
+    auto pulse_size = (int) (times * wavelength / deltaT);
     // Time bins covered by a sincle cycle
-    auto cycle_size = int(round(wavelength / deltaT));
+    auto cycle_size = (int) (wavelength / deltaT);
 
     // Select a sigma so that the 99% of the gaussian is inside the pulse limits
-    auto vsigma = (times * wavelength) / 6;
+    float vsigma = (times * wavelength) / 6;
 
     // Virtual emitter emission profile
     auto t = deltaT * (xt::arange(1, pulse_size+1) - pulse_size / 2);
     auto gaussian_pulse = xt::exp(-t*t / (2 * vsigma*vsigma));
 
-    xt::xarray<float> sin_wave = xt::sin(2 * M_PI * (1 / cycle_size * xt::arange(1, pulse_size+1)));
-    xt::xarray<float> cos_wave = xt::cos(2 * M_PI * (1 / cycle_size * xt::arange(1, pulse_size+1)));
+    auto progression = 2 * M_PI * (1.0 / cycle_size * xt::cast<double>(xt::arange(1, pulse_size+1)));
+
+    xt::xarray<float> sin_wave = xt::sin(progression);
+    xt::xarray<float> cos_wave = xt::cos(progression);
     
     xt::xarray<float> cos_pulse = xt::squeeze(cos_wave * gaussian_pulse);
     xt::xarray<float> sin_pulse = xt::squeeze(sin_wave * gaussian_pulse);
@@ -338,7 +340,7 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     auto data_shape = transient_data_in.shape();
     int rows = std::accumulate(data_shape.begin(), data_shape.end()-1, 1, std::multiplies<int>());
     int row_size = data_shape.back();
-    
+
     // Convolve the original transient data with the previous pulses and store it as a complex value
     xt::xarray<std::complex<float>> transient_data = xt::zeros<std::complex<float>>(data_shape);
     #pragma omp parallel for

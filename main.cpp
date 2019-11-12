@@ -57,6 +57,8 @@ int main(int argc, const char *argv[])
     std::string outfile = "";
     bool use_cpu = false;
     bool use_octree = false;
+    bool use_phasor_fields = false;
+    float wavelength = 0.0f;
 
     args::ArgumentParser parser("NLOS dataset backprojector.", "Takes a NLOS dataset and returns an unfiltered backprojection volume.");
     args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
@@ -94,6 +96,8 @@ int main(int argc, const char *argv[])
 
     args::ValueFlag<bool> vf_use_cpu(parser, "use_cpu", "Flag to force CPU backprojection", {"cpu"}, false);
     args::ValueFlag<bool> vf_use_octree(parser, "use_octree", "Flag to force octree backprojection (CPU only for now)", {"octree"}, false);
+    args::ValueFlag<bool> vf_use_phasor(parser, "use_phasor", "Flag to enable phasor field reconstruction (CPU only for now)", {"phasor"}, false);
+    args::ValueFlag<float> vf_wavelength(parser, "wavelength", "Phasor field wavelength (only used with phasor enabled)", {'w', "wl", "wavelength"}, false);
 
     try
     {
@@ -107,6 +111,8 @@ int main(int argc, const char *argv[])
         outfile = args::get(vf_outfile);
         use_cpu = args::get(vf_use_cpu);
         use_octree = args::get(vf_use_octree);
+        use_phasor_fields = args::get(vf_use_phasor);
+        wavelength = args::get(vf_wavelength);
     }
     catch (const args::Completion &e)
     {
@@ -164,32 +170,55 @@ int main(int argc, const char *argv[])
     
     xt::xarray<float> volume;
 
-    if (use_cpu)
+    if (use_phasor_fields)
     {
-        volume = bp::backproject(transient_data,
-                                 data.camera_grid_positions,
-                                 data.laser_grid_positions,
-                                 data.camera_position,
-                                 data.laser_position,
-                                 t0, deltaT, is_confocal,
-                                 volume_position,
-                                 volume_size,
-                                 voxel_resolution,
-                                 use_octree);
+        xt::xarray<std::complex<float>> complex_volume = bp::phasor_reconstruction(transient_data,
+                                                        data.camera_grid_positions,
+                                                        data.laser_grid_positions,
+                                                        data.camera_position,
+                                                        data.laser_position,
+                                                        t0, deltaT, is_confocal,
+                                                        volume_position,
+                                                        volume_size,
+                                                        voxel_resolution,
+                                                        wavelength,
+                                                        use_octree);
+        volume.resize(complex_volume.shape());
+        for (int i = 0; i < std::accumulate(volume.shape().begin(), volume.shape().end(), 1, std::multiplies<int>()); i++)
+        {
+            volume.data()[i] = std::abs(complex_volume.data()[i]);
+        }
     }
     else
     {
-        volume = bp::gpu_backproject(transient_data,
-                                     data.camera_grid_positions,
-                                     data.laser_grid_positions,
-                                     data.camera_position,
-                                     data.laser_position,
-                                     t0, deltaT, is_confocal,
-                                     volume_position,
-                                     volume_size,
-                                     voxel_resolution,
-                                     data.is_row_major);
+        if (use_cpu)
+        {
+            volume = bp::backproject(transient_data,
+                                    data.camera_grid_positions,
+                                    data.laser_grid_positions,
+                                    data.camera_position,
+                                    data.laser_position,
+                                    t0, deltaT, is_confocal,
+                                    volume_position,
+                                    volume_size,
+                                    voxel_resolution,
+                                    use_octree);
+        }
+        else
+        {
+            volume = bp::gpu_backproject(transient_data,
+                                        data.camera_grid_positions,
+                                        data.laser_grid_positions,
+                                        data.camera_position,
+                                        data.laser_position,
+                                        t0, deltaT, is_confocal,
+                                        volume_position,
+                                        volume_size,
+                                        voxel_resolution,
+                                        data.is_row_major);
+        }
     }
+    
     if (outfile.size() == 0)
         outfile = filename.substr(0, filename.find(".hdf5")) + "_recon.hdf5";
     save_volume(outfile, volume);
