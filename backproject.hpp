@@ -94,7 +94,8 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
     int iters = 0;
     if (verbose) std::cout << '\r' << 0 << '/' << max_voxels[0] << std::flush;
     int avoided = 0;
-    // Collapse blocks. Can't be done as is due to the progress bar
+
+    // For loops gathered in one parallel region to get progress updates
     #pragma omp parallel shared(avoided)
     {
         // Prepare the parallel range for each thread
@@ -113,7 +114,6 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
         for (int id = from; id < to; ++id)
         {
             // Skip voxels below the given threshold
-            // TODO: Make the comparison a function that is specialized for complex numbers (and the same for anything with the same issue as the >= operator I guess)
             if (depth <= 0 || within_threshold(volume(iter, volume.max_depth()-1, OctreeVolumeF<AT>::BuffType::Buffer), threshold)) 
             {
                 AT radiance = accumulate_radiance(transient_data, point_pairs,
@@ -280,12 +280,10 @@ xt::xarray<float> backproject(
     xt::xarray<uint32_t> camera_grid_points({2});
     xt::xarray<uint32_t> laser_grid_points({2});
     {
-        // camera_grid_positions.shape() is {3, point_y, points_x}
         auto t = camera_grid_positions.shape();
         camera_grid_points[0] = t[0];
         camera_grid_points[1] = t[1];
 
-        // laser_grid_positions.shape() is {3, point_y, points_x}
         t = laser_grid_positions.shape();
         laser_grid_points[0] = t[0];
         laser_grid_points[1] = t[1];
@@ -299,7 +297,7 @@ xt::xarray<float> backproject(
                                                         camera_grid_points,
                                                         is_confocal);
 
-    int T = transient_data.shape()[transient_data.shape().size()-1];
+    int T = transient_data.shape().back();
 
     SimpleOctreeVolume ov(voxels_per_side, volume_size, volume_position);
     if (use_octree)
@@ -326,7 +324,7 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     float vsigma = (times * wavelength) / 6;
 
     // Virtual emitter emission profile
-    auto t = deltaT * (xt::arange(1, pulse_size+1) - pulse_size / 2);
+    auto t = deltaT * (xt::cast<double>(xt::arange(1, pulse_size+1)) - pulse_size / 2.0);
     auto gaussian_pulse = xt::exp(-t*t / (2 * vsigma*vsigma));
 
     auto progression = 2 * M_PI * (1.0 / cycle_size * xt::cast<double>(xt::arange(1, pulse_size+1)));
@@ -338,9 +336,9 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     xt::xarray<float> sin_pulse = xt::squeeze(sin_wave * gaussian_pulse);
 
     auto data_shape = transient_data_in.shape();
-    int rows = std::accumulate(data_shape.begin(), data_shape.end()-1, 1, std::multiplies<int>());
+    int rows = transient_data_in.size();
     int row_size = data_shape.back();
-
+    
     // Convolve the original transient data with the previous pulses and store it as a complex value
     xt::xarray<std::complex<float>> transient_data = xt::zeros<std::complex<float>>(data_shape);
     #pragma omp parallel for
@@ -385,12 +383,10 @@ xt::xarray<std::complex<float>> phasor_reconstruction(
     xt::xarray<uint32_t> camera_grid_points({2});
     xt::xarray<uint32_t> laser_grid_points({2});
     {
-        // camera_grid_positions.shape() is {3, point_y, points_x}
         auto t = camera_grid_positions.shape();
         camera_grid_points[0] = t[0];
         camera_grid_points[1] = t[1];
 
-        // laser_grid_positions.shape() is {3, point_y, points_x}
         t = laser_grid_positions.shape();
         laser_grid_points[0] = t[0];
         laser_grid_points[1] = t[1];
