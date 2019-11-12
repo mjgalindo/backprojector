@@ -4,6 +4,7 @@
 #define USE_XTENSOR
 #define XTENSOR_ENABLE_XSIMD
 
+#include <complex>
 #include <math.h>
 #include <xtensor/xtensor.hpp>
 #include <xtensor-blas/xlinalg.hpp>
@@ -45,17 +46,18 @@ struct ppd
     float camera_wall, laser_wall;
 };
 
-double accumulate_radiance(const xt::xarray<float>& transient_data,
-                           const std::vector<ppd>& point_pairs,
-                           const xt::xarray<float>& voxel_position,
-                           float t0, float deltaT, uint32_t T, float access_width)
+template <typename AT>
+AT accumulate_radiance(const xt::xarray<AT>& transient_data,
+                       const std::vector<ppd>& point_pairs,
+                       const xt::xarray<float>& voxel_position,
+                       float t0, float deltaT, uint32_t T, float access_width)
 {
-    double radiance_sum = 0.0;
+    AT radiance_sum = AT{};
     for (int pairId = 0; pairId < point_pairs.size(); pairId++)
     {
         const auto& pair = point_pairs[pairId];
         const float wall_voxel_wall_distance = distance(pair.laser, voxel_position) +
-                                                distance(voxel_position, pair.camera);
+                                               distance(voxel_position, pair.camera);
         float total_distance = pair.laser_wall + wall_voxel_wall_distance + pair.camera_wall;
         int first_time_index = std::max({0, (int) round((total_distance - access_width / 2 - t0) / deltaT)});
         int last_time_index = std::min({(int) T-1, (int) round((total_distance + access_width / 2 - t0) / deltaT)});
@@ -67,12 +69,24 @@ double accumulate_radiance(const xt::xarray<float>& transient_data,
     return radiance_sum;
 }
 
+template <typename AT>
+bool within_threshold(AT value, AT threshold)
+{
+    return value >= threshold;
+}
 
-void classic_backprojection(const xt::xarray<float>& transient_data, 
+template <typename AT>
+bool within_threshold(std::complex<AT> value, std::complex<AT> threshold)
+{
+    return within_threshold(std::abs(value), std::abs(threshold));
+}
+
+template <typename AT>
+void classic_backprojection(const xt::xarray<AT>& transient_data, 
                             const std::vector<ppd>& point_pairs,
-                            OctreeVolume<float>& volume, int depth,
+                            OctreeVolumeF<AT>& volume, int depth,
                             float t0, float deltaT, uint32_t T,
-                            float threshold = 0.0f, bool verbose=true)
+                            AT threshold = 0.0f, bool verbose=true)
 {
     auto max_voxels = volume.max_voxels(depth);
     xt::xarray<float> voxel_size = volume.voxel_size_at(depth);
@@ -99,17 +113,18 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
         for (int id = from; id < to; ++id)
         {
             // Skip voxels below the given threshold
-            if (depth <= 0 || volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer) >= threshold) 
+            // TODO: Make the comparison a function that is specialized for complex numbers (and the same for anything with the same issue as the >= operator I guess)
+            if (depth <= 0 || within_threshold(volume(iter, volume.max_depth()-1, OctreeVolumeF<AT>::BuffType::Buffer), threshold)) 
             {
-                float radiance = accumulate_radiance(transient_data, point_pairs,
-                                                     volume.position_at(iter, depth),
-                                                     t0, deltaT, T, voxel_diagonal);
-                volume(iter, OctreeVolume<float>::BuffType::Main) = radiance;
+                AT radiance = accumulate_radiance(transient_data, point_pairs,
+                                                  volume.position_at(iter, depth),
+                                                  t0, deltaT, T, voxel_diagonal);
+                volume(iter, OctreeVolumeF<AT>::BuffType::Main) = radiance;
             }
             else
             {
                 local_avoided++;
-                volume(iter, depth) = NAN; // volume(iter, volume.max_depth()-1, OctreeVolume<float>::BuffType::Buffer);
+                volume(iter, depth) = NAN; // volume(iter, volume.max_depth()-1, SimpleOctreeVolume::BuffType::Buffer);
             }
             ++iter;
 
@@ -128,25 +143,28 @@ void classic_backprojection(const xt::xarray<float>& transient_data,
                            << "Avoided computing " << avoided << " blocks." << std::endl;
 }
 
-void classic_backprojection(const xt::xarray<float>& transient_data, 
+
+template <typename AT>
+void classic_backprojection(const xt::xarray<AT>& transient_data, 
                             const std::vector<ppd>& point_pairs,
                             const xt::xarray<float>& volume_size,
                             const xt::xarray<float>& volume_position,
-                            xt::xarray<float>& volume,
+                            xt::xarray<AT>& volume,
                             float t0, float deltaT, uint32_t T, bool verbose=true)
 {
-    OctreeVolume<float> ov(volume, volume_size, volume_position);
+    OctreeVolumeF<AT> ov(volume, volume_size, volume_position);
     classic_backprojection(transient_data, point_pairs, ov, -1, t0, deltaT, T, 0.0f, verbose);
     volume = ov.volume();
 }
 
-void octree_backprojection(const xt::xarray<float>& transient_data, 
-                            const std::vector<ppd>& point_pairs,
-                            OctreeVolume<float>& volume,
-                            float t0, float deltaT, uint32_t T, bool verbose=true)
+template <typename AT>
+void octree_backprojection(const xt::xarray<AT>& transient_data, 
+                           const std::vector<ppd>& point_pairs,
+                           OctreeVolumeF<AT>& volume,
+                           float t0, float deltaT, uint32_t T, bool verbose=true)
 {
     int depth = 3;
-    float threshold = -1.0f;
+    AT threshold = -1.0f;
     volume.reset_buffer();
     while (depth <= volume.max_depth())
     {
@@ -158,16 +176,17 @@ void octree_backprojection(const xt::xarray<float>& transient_data,
                                       xt::range(0, max_voxels[1]),
                                       xt::range(0, max_voxels[2])).shape();
 
-        threshold = xt::mean(xt::nan_to_num(xt::view(volume.volume(),
+        // xt::nan_to_num(xt::vie....
+        threshold = xt::mean(xt::view(volume.volume(),
                                       xt::range(0, max_voxels[0]),
                                       xt::range(0, max_voxels[1]),
-                                      xt::range(0, max_voxels[2]))))[0] / (xt::mean(max_voxels)[0]/8);
+                                      xt::range(0, max_voxels[2])))[0] / (xt::mean(max_voxels)[0]/8);
 
         std::cout << "Volume sum " << xt::nansum(volume.volume())[0] << " " << xt::nansum(xt::view(volume.volume(), 
                                       xt::range(0, max_voxels[0]),
                                       xt::range(0, max_voxels[1]),
                                       xt::range(0, max_voxels[2]))) << std::endl;
-        std::cout << "Buffer sum " << xt::nansum(volume.volume(OctreeVolume<float>::BuffType::Buffer))[0] << " " << xt::nansum(xt::view(volume.volume(OctreeVolume<float>::BuffType::Buffer), 
+        std::cout << "Buffer sum " << xt::nansum(volume.volume(OctreeVolumeF<AT>::BuffType::Buffer))[0] << " " << xt::nansum(xt::view(volume.volume(OctreeVolumeF<AT>::BuffType::Buffer), 
                                       xt::range(0, max_voxels[0]),
                                       xt::range(0, max_voxels[1]),
                                       xt::range(0, max_voxels[2]))) << std::endl;
@@ -282,7 +301,7 @@ xt::xarray<float> backproject(
 
     int T = transient_data.shape()[transient_data.shape().size()-1];
 
-    OctreeVolume<float> ov(voxels_per_side, volume_size, volume_position);
+    SimpleOctreeVolume ov(voxels_per_side, volume_size, volume_position);
     if (use_octree)
     {
         octree_backprojection(transient_data, point_pairs, ov, t0, deltaT, T);
@@ -294,6 +313,111 @@ xt::xarray<float> backproject(
     
     return ov.volume();
 }
+
+xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_data_in,
+                                             float wavelength, float deltaT, uint32_t times=4)
+{
+    // Time bins covered by the phasor pulse
+    auto pulse_size = (int)(round(times * wavelength) / deltaT);
+    // Time bins covered by a sincle cycle
+    auto cycle_size = int(round(wavelength / deltaT));
+
+    // Select a sigma so that the 99% of the gaussian is inside the pulse limits
+    auto vsigma = (times * wavelength) / 6;
+
+    // Virtual emitter emission profile
+    auto t = deltaT * (xt::arange(1, pulse_size+1) - pulse_size / 2);
+    auto gaussian_pulse = xt::exp(-t*t / (2 * vsigma*vsigma));
+
+    xt::xarray<float> sin_wave = xt::sin(2 * M_PI * (1 / cycle_size * xt::arange(1, pulse_size+1)));
+    xt::xarray<float> cos_wave = xt::cos(2 * M_PI * (1 / cycle_size * xt::arange(1, pulse_size+1)));
+    
+    xt::xarray<float> cos_pulse = xt::squeeze(cos_wave * gaussian_pulse);
+    xt::xarray<float> sin_pulse = xt::squeeze(sin_wave * gaussian_pulse);
+
+    auto data_shape = transient_data_in.shape();
+    int rows = std::accumulate(data_shape.begin(), data_shape.end()-1, 1, std::multiplies<int>());
+    int row_size = data_shape.back();
+    
+    // Convolve the original transient data with the previous pulses and store it as a complex value
+    xt::xarray<std::complex<float>> transient_data = xt::zeros<std::complex<float>>(data_shape);
+    #pragma omp parallel for
+    for (int row = 0; row < rows; row++)
+    {
+        for (int t = 0; t < row_size; t++)
+        {
+            std::complex<float> tmp(0.0f, 0.0f);
+            for (int pulse_index = 0; pulse_index < pulse_size; pulse_index++)
+            {
+                int read_index = t + pulse_index - pulse_size / 2;
+                if (read_index > 0 && read_index < row_size)
+                {
+                    tmp += std::complex<float>(transient_data_in.data()[row*row_size+read_index] * cos_pulse[pulse_index], 
+                                               transient_data_in.data()[row*row_size+read_index] * sin_pulse[pulse_index]);
+                }
+            }
+            transient_data.data()[row*row_size+t] = tmp;
+        }
+    }
+
+    return transient_data;
+}
+
+xt::xarray<std::complex<float>> phasor_reconstruction(
+    const xt::xarray<float> &transient_data,
+    const xt::xarray<float> &camera_grid_positions,
+    const xt::xarray<float> &laser_grid_positions,
+    const xt::xarray<float> &camera_position,
+    const xt::xarray<float> &laser_position,
+    float t0,
+    float deltaT,
+    bool is_confocal,
+    const xt::xarray<float> &volume_position,
+    const xt::xarray<float> volume_size,
+    const xt::xarray<uint32_t> voxels_per_side,
+    float wavelength=0.04f,
+    bool use_octree = false)
+{
+    xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
+
+    xt::xarray<uint32_t> camera_grid_points({2});
+    xt::xarray<uint32_t> laser_grid_points({2});
+    {
+        // camera_grid_positions.shape() is {3, point_y, points_x}
+        auto t = camera_grid_positions.shape();
+        camera_grid_points[0] = t[0];
+        camera_grid_points[1] = t[1];
+
+        // laser_grid_positions.shape() is {3, point_y, points_x}
+        t = laser_grid_positions.shape();
+        laser_grid_points[0] = t[0];
+        laser_grid_points[1] = t[1];
+    }
+
+    std::vector<ppd> point_pairs = precompute_distances(laser_position,
+                                                        laser_grid_positions,
+                                                        laser_grid_points,
+                                                        camera_position,
+                                                        camera_grid_positions,
+                                                        camera_grid_points,
+                                                        is_confocal);
+
+    xt::xarray<std::complex<float>> complex_transient_data = phasor_pulse(transient_data, wavelength, deltaT);
+    int T = complex_transient_data.shape()[complex_transient_data.shape().size()-1];
+
+    ComplexOctreeVolumeF ov(voxels_per_side, volume_size, volume_position);
+    if (use_octree)
+    {
+        octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, T);
+    }
+    else
+    {
+        classic_backprojection(complex_transient_data, point_pairs, ov, -1, t0, deltaT, T);
+    }
+    
+    return ov.volume();
+}
+
 
 std::tuple<uint32_t, uint32_t> get_time_limits(const xt::xarray<float>& laser_position,
                                                const xt::xarray<float>& laser_grid_positions,
@@ -360,14 +484,14 @@ std::tuple<uint32_t, uint32_t> get_time_limits(const xt::xarray<float>& laser_po
     return std::make_tuple(min_T_index, max_T_index);
 }
 
-xt::xarray<float> get_transient_chunk(const xt::xarray<float>& transient_data,
+template <typename AT>
+xt::xarray<float> get_transient_chunk(const xt::xarray<AT>& transient_data,
                                       const xt::xarray<uint32_t>& laser_grid_points,
                                       const xt::xarray<uint32_t>& camera_grid_points,
                                       uint32_t min_T_index, uint32_t max_T_index,
                                       bool is_confocal, bool assume_row_major)
 {
     xt::xarray<float> transient_chunk;
-    // TODO: Fill with zeroes if max_T_index > T
     if (is_confocal)
     {
         if (assume_row_major)
@@ -404,7 +528,7 @@ xt::xarray<float> get_transient_chunk(const xt::xarray<float>& transient_data,
                         }
         }
     }
-    transient_chunk = xt::nan_to_num(transient_chunk);
+    // transient_chunk = xt::nan_to_num(transient_chunk);
     return std::move(transient_chunk);
 }
 

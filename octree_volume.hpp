@@ -8,43 +8,43 @@
 
 #include "iter3D.hpp"
 
-template <typename T>
+template <typename DT, typename FT>
 class OctreeVolume
 {
 
 protected:
     xt::xarray<size_t> m_max_voxels;
-    xt::xarray<T> m_volume_size;
-    xt::xarray<T> m_volume_position;
-    xt::xarray<T> m_voxel_size;
+    xt::xarray<FT> m_volume_size;
+    xt::xarray<FT> m_volume_position;
+    xt::xarray<FT> m_voxel_size;
 
-    xt::xarray<T> m_data;
-    xt::xarray<T> m_data_buffer;
+    xt::xarray<DT> m_data;
+    xt::xarray<DT> m_data_buffer;
     bool m_double_buffered = false;
 
 public:
     enum BuffType {Main, Buffer};
 
     OctreeVolume(const xt::xarray<uint32_t>& voxel_axes,
-                  const xt::xarray<float>& volume_size,
-                  const xt::xarray<float>& volume_position,
+                  const xt::xarray<FT>& volume_size,
+                  const xt::xarray<FT>& volume_position,
                   bool double_buffered=false) 
     {
         m_max_voxels = voxel_axes;
         m_volume_size = volume_size; 
         m_volume_position = volume_position;
         m_voxel_size = volume_size / voxel_axes;
-        m_data = xt::zeros<T>(m_max_voxels);
+        m_data = xt::zeros<DT>(m_max_voxels);
         m_double_buffered = double_buffered;
         if (m_double_buffered)
         {
-            m_data_buffer = xt::zeros<T>(m_data.shape());
+            m_data_buffer = xt::zeros<DT>(m_data.shape());
         }
     }
 
-    OctreeVolume(xt::xarray<float>& volume,
-                  const xt::xarray<float>& volume_size,
-                  const xt::xarray<float>& volume_position,
+    OctreeVolume(xt::xarray<DT>& volume,
+                  const xt::xarray<FT>& volume_size,
+                  const xt::xarray<FT>& volume_position,
                   bool double_buffered=false) 
     {
         m_max_voxels = xt::xarray<size_t>(volume.shape());
@@ -55,14 +55,14 @@ public:
         m_double_buffered = double_buffered;
         if (m_double_buffered)
         {
-            m_data_buffer = xt::zeros<T>(m_data.shape());
+            m_data_buffer = xt::zeros<DT>(m_data.shape());
         }
     }
 
     void reset_buffer()
     {
         m_double_buffered = true;
-        m_data_buffer = xt::zeros<T>(m_data.shape());
+        m_data_buffer = xt::zeros<DT>(m_data.shape());
     }
 
     void swap_buffers()
@@ -72,7 +72,7 @@ public:
         std::swap(m_data, m_data_buffer);
     }
 
-    xt::xarray<T>& volume(BuffType buff = BuffType::Main)
+    xt::xarray<DT>& volume(BuffType buff = BuffType::Main)
     {
         switch (buff)
         {
@@ -96,7 +96,7 @@ public:
     }
 
     template <typename UT>
-    T& operator()(const xt::xarray<UT>& xyz, BuffType buff = BuffType::Main)
+    DT& operator()(const xt::xarray<UT>& xyz, BuffType buff = BuffType::Main)
     {
         switch (buff)
         {
@@ -110,49 +110,49 @@ public:
     }
 
     template <typename UT>
-    T& operator()(const xt::xarray<UT>& xyz, int depth, BuffType buff = BuffType::Main)
+    DT& operator()(const xt::xarray<UT>& xyz, int depth, BuffType buff = BuffType::Main)
     {
         return (*this)((*this).at_depth(xyz, depth), buff);
     }
 
-    T& operator()(const iter3D& iter, BuffType buff = BuffType::Main)
+    DT& operator()(const iter3D& iter, BuffType buff = BuffType::Main)
     {   
         return (*this)(iter.x(), iter.y(), iter.z(), buff);
     }
 
-    T& operator()(const iter3D& iter, int depth, BuffType buff = BuffType::Main)
+    DT& operator()(const iter3D& iter, int depth, BuffType buff = BuffType::Main)
     {
         return (*this)((*this).at_depth(xt::xarray<size_t>{iter.x(), iter.y(), iter.z()}, depth), buff);
     }
 
     template <typename UT>
-    T& operator()(UT x, UT y, UT z, BuffType buff = BuffType::Main)
+    DT& operator()(UT x, UT y, UT z, BuffType buff = BuffType::Main)
     {
         return (*this)(xt::xarray<UT>({x,y,z}), buff);
     }
 
     template <typename UT>
-    T& operator()(UT x, UT y, UT z, int depth, BuffType buff = BuffType::Main)
+    DT& operator()(UT x, UT y, UT z, int depth, BuffType buff = BuffType::Main)
     {   
         return (*this)((*this).at_+depth(xt::xarray<UT>({x,y,z}), depth, buff));
     }
 
-    xt::xarray<T> position_at(const iter3D& iter) const
+    xt::xarray<FT> position_at(const iter3D& iter) const
     {
-        static xt::xarray<T> zero_pos = m_volume_position - m_volume_size / 2;
-        return std::move(zero_pos + xt::xarray<T>{iter.x() * m_voxel_size[0], iter.y() * m_voxel_size[1], iter.z() * m_voxel_size[2]});
+        static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
+        return std::move(zero_pos + xt::xarray<FT>{iter.x() * m_voxel_size[0], iter.y() * m_voxel_size[1], iter.z() * m_voxel_size[2]});
     }
 
-    xt::xarray<T> voxel_size_at(int depth=-1) const
+    xt::xarray<FT> voxel_size_at(int depth=-1) const
     {
         return m_volume_size / max_voxels(depth);
     }
 
-    xt::xarray<T> position_at(const iter3D& iter, int depth) const
+    xt::xarray<FT> position_at(const iter3D& iter, int depth) const
     {
-        static xt::xarray<T> zero_pos = m_volume_position - m_volume_size / 2;
-        xt::xarray<T> voxel_size = voxel_size_at(depth);
-        return std::move(zero_pos + xt::xarray<T>{iter.x() * voxel_size[0], iter.y() * voxel_size[1], iter.z() * voxel_size[2]});
+        static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
+        xt::xarray<FT> voxel_size = voxel_size_at(depth);
+        return std::move(zero_pos + xt::xarray<FT>{iter.x() * voxel_size[0], iter.y() * voxel_size[1], iter.z() * voxel_size[2]});
     }
 
     xt::xarray<size_t> max_voxels(int depth=-1) const
@@ -163,14 +163,28 @@ public:
         return m_max_voxels / mod;
     }
 
-    template <typename TI>
-    inline xt::xarray<TI> at_depth(const xt::xarray<TI>& xyz, int depth) const
+    template <typename UT>
+    inline xt::xarray<UT> at_depth(const xt::xarray<UT>& xyz, int depth) const
     {
         if (depth == -1 || depth == max_depth()) return xyz;
-        xt::xarray<TI> mod = m_max_voxels / (1u << depth);
+        xt::xarray<UT> mod = m_max_voxels / (1u << depth);
         return xyz / mod;
     }
 
 };
+
+template <typename FT>
+using ComplexOctreeVolume = OctreeVolume<std::complex<FT>, FT>;
+
+using ComplexOctreeVolumeF = OctreeVolume<std::complex<float>, float>;
+
+template <typename DT>
+using OctreeVolumeF = OctreeVolume<DT, float>;
+
+using SimpleOctreeVolume = OctreeVolume<float, float>;
+
+template <typename DT>
+using OctreeVolumeD = OctreeVolume<DT, double>;
+
 
 #endif // OCTREEVOL_HPP
