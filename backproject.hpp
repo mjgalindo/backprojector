@@ -18,6 +18,10 @@
 #include "backproject_cuda.hpp"
 #include "octree_volume.hpp"
 
+#if __linux__
+#include "tqdm.h"
+#endif
+
 namespace bp
 {
 
@@ -92,7 +96,16 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
     xt::xarray<float> voxel_size = volume.voxel_size_at(depth);
     float voxel_diagonal = xt::sqrt(xt::sum(voxel_size * voxel_size))[0]; 
     int iters = 0;
-    if (verbose) std::cout << '\r' << 0 << '/' << max_voxels[0] << std::flush;
+    
+    #if __linux__
+    tqdm bar;
+    bar.set_theme_braille();
+    #else
+    if (verbose)
+    {
+        std::cout << '\r' << 0 << '/' << max_voxels[0] << std::flush;
+    }
+    #endif
     int avoided = 0;
 
     // For loops gathered in one parallel region to get progress updates
@@ -128,19 +141,29 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
             }
             ++iter;
 
-            if (verbose && threadId == 0 && id % max_voxels[1] * max_voxels[2] == 0)
+            // Update progress estimate
+            if (verbose && threadId == 0)
             {
-                // Update progress estimate
-                uint32_t slices_done = (nthreads * id) / (max_voxels[1] * max_voxels[2]);
-                slices_done = slices_done > max_voxels[0] ? max_voxels[0] : slices_done;
-                std::cout << '\r' << slices_done << '/' << max_voxels[0] << std::flush;
+                uint32_t pairs_done = nthreads * id;
+                #if __linux__
+                bar.progress(pairs_done, total_length);
+                #else
+                std::cout << '\r' << pairs_done << '/' << total_length << std::flush;
+                #endif
             }
         }
         #pragma omp atomic
         avoided += local_avoided;
     }
-    if (verbose) std::cout << '\r' << max_voxels[0] << '/' << max_voxels[0] << std::endl 
-                           << "Avoided computing " << avoided << " blocks." << std::endl;
+    if (verbose)
+    {
+        #if __linux__
+        bar.finish();
+        #else
+        std::cout << '\r' << total_length << '/' << total_length << std::endl;
+        #endif
+        std::cout << "Avoided computing " << avoided << " blocks." << std::endl;
+    }
 }
 
 
@@ -336,7 +359,7 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     xt::xarray<float> sin_pulse = xt::squeeze(sin_wave * gaussian_pulse);
 
     auto data_shape = transient_data_in.shape();
-    int rows = transient_data_in.size();
+    int rows = std::accumulate(data_shape.begin(), data_shape.end()-1, 1, std::multiplies<int>());
     int row_size = data_shape.back();
     
     // Convolve the original transient data with the previous pulses and store it as a complex value
