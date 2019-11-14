@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
-
+#include <xtensor/xarray.hpp>
 
 #include "iter3D.hpp"
 
@@ -140,7 +140,9 @@ public:
     xt::xarray<FT> position_at(const iter3D& iter) const
     {
         static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
-        return std::move(zero_pos + xt::xarray<FT>{iter.x() * m_voxel_size[0], iter.y() * m_voxel_size[1], iter.z() * m_voxel_size[2]});
+        return std::move(zero_pos + xt::xarray<FT>{iter.x() * m_voxel_size[0], 
+                                                   iter.y() * m_voxel_size[1], 
+                                                   iter.z() * m_voxel_size[2]});
     }
 
     xt::xarray<FT> voxel_size_at(int depth=-1) const
@@ -152,7 +154,9 @@ public:
     {
         static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
         xt::xarray<FT> voxel_size = voxel_size_at(depth);
-        return std::move(zero_pos + xt::xarray<FT>{iter.x() * voxel_size[0], iter.y() * voxel_size[1], iter.z() * voxel_size[2]});
+        return std::move(zero_pos + xt::xarray<FT>{iter.x() * voxel_size[0], 
+                                                   iter.y() * voxel_size[1], 
+                                                   iter.z() * voxel_size[2]});
     }
 
     xt::xarray<size_t> max_voxels(int depth=-1) const
