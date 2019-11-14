@@ -28,7 +28,6 @@ namespace bp
 template <typename V1, typename V2>
 float distance(const V1 &p1, const V2 &p2)
 {
-    if (p1.size() < 3 || p2.size() < 3) return 0.0;
     std::array<float, 3> tmp;
     for (int i = 0; i < 3; i++)
     {
@@ -44,12 +43,6 @@ inline double round(double x)
     return floor(x + 0.5);
 }
 
-struct ppd
-{
-    std::array<float, 3> camera, laser;
-    float camera_wall, laser_wall;
-};
-
 template <typename AT>
 AT accumulate_radiance(const xt::xarray<AT>& transient_data,
                        const std::vector<ppd>& point_pairs,
@@ -60,8 +53,8 @@ AT accumulate_radiance(const xt::xarray<AT>& transient_data,
     for (int pairId = 0; pairId < point_pairs.size(); pairId++)
     {
         const auto& pair = point_pairs[pairId];
-        const float wall_voxel_wall_distance = distance(pair.laser, voxel_position) +
-                                               distance(voxel_position, pair.camera);
+        const float wall_voxel_wall_distance = distance(pair.laser_point, voxel_position) +
+                                               distance(voxel_position, pair.camera_point);
         float total_distance = pair.laser_wall + wall_voxel_wall_distance + pair.camera_wall;
         int first_time_index = std::max({0, (int) round((total_distance - access_width / 2 - t0) / deltaT)});
         int last_time_index = std::min({(int) T-1, (int) round((total_distance + access_width / 2 - t0) / deltaT)});
@@ -253,8 +246,8 @@ std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
                     for (size_t cy = 0; cy <  camera_grid_points[1]; cy++)
                     {
                         auto camera_point = xt::view(camera_grid_positions, cx, cy, xt::all());
-                        std::copy(laser_point.begin(), laser_point.end(), point_pairs[p].laser.begin());
-                        std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].camera.begin());
+                        std::copy(laser_point.begin(), laser_point.end(), point_pairs[p].laser_point);
+                        std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].camera_point);
                         point_pairs[p].camera_wall = distance(camera_position, camera_point);
                         point_pairs[p].laser_wall = laser_wall;
                         p++;
@@ -272,8 +265,8 @@ std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
             for (size_t ly = 0; ly < laser_grid_points[1]; ly++)
             {
                 auto camera_point = xt::view(camera_grid_positions, lx, ly, xt::all());
-                std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].laser.begin());
-                std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].camera.begin());
+                std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].laser_point);
+                std::copy(camera_point.begin(), camera_point.end(), point_pairs[p].camera_point);
                 float laser_camera_wall = distance(camera_position, camera_point);
                 point_pairs[p].camera_wall = laser_camera_wall;
                 point_pairs[p].laser_wall = laser_camera_wall;
@@ -386,59 +379,6 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     return transient_data;
 }
 
-xt::xarray<std::complex<float>> phasor_reconstruction(
-    const xt::xarray<float> &transient_data,
-    const xt::xarray<float> &camera_grid_positions,
-    const xt::xarray<float> &laser_grid_positions,
-    const xt::xarray<float> &camera_position,
-    const xt::xarray<float> &laser_position,
-    float t0,
-    float deltaT,
-    bool is_confocal,
-    const xt::xarray<float> &volume_position,
-    const xt::xarray<float> volume_size,
-    const xt::xarray<uint32_t> voxels_per_side,
-    float wavelength=0.04f,
-    bool use_octree = false)
-{
-    xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
-
-    xt::xarray<uint32_t> camera_grid_points({2});
-    xt::xarray<uint32_t> laser_grid_points({2});
-    {
-        auto t = camera_grid_positions.shape();
-        camera_grid_points[0] = t[0];
-        camera_grid_points[1] = t[1];
-
-        t = laser_grid_positions.shape();
-        laser_grid_points[0] = t[0];
-        laser_grid_points[1] = t[1];
-    }
-
-    std::vector<ppd> point_pairs = precompute_distances(laser_position,
-                                                        laser_grid_positions,
-                                                        laser_grid_points,
-                                                        camera_position,
-                                                        camera_grid_positions,
-                                                        camera_grid_points,
-                                                        is_confocal);
-
-    xt::xarray<std::complex<float>> complex_transient_data = phasor_pulse(transient_data, wavelength, deltaT);
-    int T = complex_transient_data.shape()[complex_transient_data.shape().size()-1];
-
-    ComplexOctreeVolumeF ov(voxels_per_side, volume_size, volume_position);
-    if (use_octree)
-    {
-        octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, T);
-    }
-    else
-    {
-        classic_backprojection(complex_transient_data, point_pairs, ov, -1, t0, deltaT, T);
-    }
-    
-    return ov.volume();
-}
-
 
 std::tuple<uint32_t, uint32_t> get_time_limits(const xt::xarray<float>& laser_position,
                                                const xt::xarray<float>& laser_grid_positions,
@@ -506,13 +446,13 @@ std::tuple<uint32_t, uint32_t> get_time_limits(const xt::xarray<float>& laser_po
 }
 
 template <typename AT>
-xt::xarray<float> get_transient_chunk(const xt::xarray<AT>& transient_data,
-                                      const xt::xarray<uint32_t>& laser_grid_points,
-                                      const xt::xarray<uint32_t>& camera_grid_points,
-                                      uint32_t min_T_index, uint32_t max_T_index,
-                                      bool is_confocal, bool assume_row_major)
+xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
+                                   const xt::xarray<uint32_t>& laser_grid_points,
+                                   const xt::xarray<uint32_t>& camera_grid_points,
+                                   uint32_t min_T_index, uint32_t max_T_index,
+                                   bool is_confocal, bool assume_row_major)
 {
-    xt::xarray<float> transient_chunk;
+    xt::xarray<AT> transient_chunk;
     if (is_confocal)
     {
         if (assume_row_major)
@@ -521,7 +461,7 @@ xt::xarray<float> get_transient_chunk(const xt::xarray<AT>& transient_data,
         }
         else
         {
-            transient_chunk = xt::empty<float>({laser_grid_points[0], laser_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
+            transient_chunk = xt::empty<AT>({laser_grid_points[0], laser_grid_points[1], (uint32_t)(max_T_index - min_T_index)});
             #pragma omp parallel for
             for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
                 for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
@@ -591,8 +531,6 @@ xt::xarray<float> gpu_backproject(
     const uint32_t num_laser_points = laser_grid_points[0] * laser_grid_points[1];
     const uint32_t num_camera_points = camera_grid_points[0] * camera_grid_points[1];
 
-    std::vector<pointpair> scanned_pairs;
-    
     // Get the minimum and maximum distance traveled to transfer as little memory to the GPU as possible
     int min_T_index = 0, max_T_index = 0;
     std::tie(min_T_index, max_T_index) = get_time_limits(
@@ -608,60 +546,14 @@ xt::xarray<float> gpu_backproject(
         assume_row_major
     );
 
-    // Gather the captured pairs into a single vector to pass to the GPU.
-    if (is_confocal)
-    {
-        scanned_pairs.resize(num_laser_points);
-        #pragma omp parallel for
-        for (int32_t cx = 0; cx < camera_grid_points[0]; cx++)
-            for (int32_t cy = 0; cy < camera_grid_points[1]; cy++)
-            {
-                uint32_t index = cx * camera_grid_points[1] + cy;
-                for (int32_t i = 0; i < 3; i++)
-                {
-                    if (assume_row_major)
-                    {
-                        scanned_pairs[index].cam_point[i] = camera_grid_positions(cx, cy, i);
-                        scanned_pairs[index].laser_point[i] = camera_grid_positions(cx, cy, i);
-                    }
-                    else
-                    {
-                        scanned_pairs[index].cam_point[i] = camera_grid_positions(i, cy, cx);
-                        scanned_pairs[index].laser_point[i] = camera_grid_positions(i, cy, cx);
-                    }
-                }
-            }
-    }
-    else
-    {
-        scanned_pairs.resize(num_laser_points *
-                             num_camera_points);
+    std::vector<ppd> scanned_pairs = precompute_distances(laser_position,
+                                                        laser_grid_positions,
+                                                        laser_grid_points,
+                                                        camera_position,
+                                                        camera_grid_positions,
+                                                        camera_grid_points,
+                                                        is_confocal);
 
-        #pragma omp parallel for
-        for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
-            for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
-                for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
-                    for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
-                    {
-                        uint32_t index = lx * laser_grid_points[1] * num_camera_points +
-                                         ly * num_camera_points +
-                                         cx * camera_grid_points[1] +
-                                         cy;
-                        for (uint32_t i = 0; i < 3; i++)
-                        {
-                            if (assume_row_major)
-                            {
-                                scanned_pairs[index].cam_point[i] = camera_grid_positions(cx, cy, i);
-                                scanned_pairs[index].laser_point[i] = laser_grid_positions(lx, ly, i);
-                            }
-                            else
-                            {
-                                scanned_pairs[index].cam_point[i] = camera_grid_positions(i, cy, cx);
-                                scanned_pairs[index].laser_point[i] = laser_grid_positions(i, ly, lx);
-                            }
-                        }
-                    }
-    }
 
     // Compute the reconstruction volume so that it is aligned to the relay-wall
     xt::xarray<float> x({1,0,0});
@@ -701,16 +593,14 @@ xt::xarray<float> gpu_backproject(
     if (use_octree)
     {
         call_cuda_octree_backprojection(transient_chunk.data(),
-                                 total_transient_size,
-                                 chunkedT,
-                                 scanned_pairs,
-                                 camera_position.size() > 1 ? camera_position.data() : nullptr,
-                                 laser_position.size() > 1 ? laser_position.data() : nullptr,
-                                 voxel_volume.data(),
-                                 voxels_per_side.data(),
-                                 volume_zero_pos.data(),
-                                 voxel_inc.data(),
-                                 t0, deltaT);
+                                        total_transient_size,
+                                        chunkedT,
+                                        scanned_pairs,
+                                        voxel_volume.data(),
+                                        voxels_per_side.data(),
+                                        volume_zero_pos.data(),
+                                        voxel_inc.data(),
+                                        t0, deltaT);
     }
     else
     {
@@ -718,8 +608,6 @@ xt::xarray<float> gpu_backproject(
                                  total_transient_size,
                                  chunkedT,
                                  scanned_pairs,
-                                 camera_position.size() > 1 ? camera_position.data() : nullptr,
-                                 laser_position.size() > 1 ? laser_position.data() : nullptr,
                                  voxel_volume.data(),
                                  voxels_per_side.data(),
                                  volume_zero_pos.data(),
@@ -729,6 +617,115 @@ xt::xarray<float> gpu_backproject(
 
     return voxel_volume;
 }
+
+xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &transient_data,
+                                                      const xt::xarray<float> &camera_grid_positions,
+                                                      const xt::xarray<float> &laser_grid_positions,
+                                                      const xt::xarray<float> &camera_position,
+                                                      const xt::xarray<float> &laser_position,
+                                                      float t0, float deltaT, bool is_confocal,
+                                                      const xt::xarray<float> &volume_position,
+                                                      const xt::xarray<float> volume_size,
+                                                      const xt::xarray<uint32_t> voxels_per_side,
+                                                      float wavelength=0.04f, bool use_cpu=true,
+                                                      bool use_octree = false, bool row_major=true,
+                                                      xt::xarray<float> wall_normal={0,0,0})
+{
+    xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
+
+    xt::xarray<uint32_t> camera_grid_points({2});
+    xt::xarray<uint32_t> laser_grid_points({2});
+    {
+        auto t = camera_grid_positions.shape();
+        camera_grid_points[0] = t[0];
+        camera_grid_points[1] = t[1];
+
+        t = laser_grid_positions.shape();
+        laser_grid_points[0] = t[0];
+        laser_grid_points[1] = t[1];
+    }
+
+    int T = transient_data.shape().back();
+    int min_T_index = 0, max_T_index = 0;
+    std::tie(min_T_index, max_T_index) = get_time_limits(
+        laser_position, laser_grid_positions, laser_grid_points,
+        camera_position, camera_grid_positions, camera_grid_points,
+        volume_size, volume_position,
+        t0, T, deltaT,
+        row_major
+    );
+
+        // Compute the reconstruction volume so that it is aligned to the relay-wall
+    xt::xarray<float> x({1,0,0});
+    xt::xarray<float> y({0,1,0});
+    xt::xarray<float> z({0,0,1});
+
+    if (xt::any(xt::not_equal(wall_normal, 0.0f)))
+    {   
+        y = -wall_normal;
+        x = xt::linalg::cross(y,z);
+        z = xt::linalg::cross(y,x);
+        x = x / xt::sqrt(xt::sum(x*x));
+        y = y / xt::sqrt(xt::sum(y*y));
+        z = z / xt::sqrt(xt::sum(z*z));
+    }
+
+    xt::xarray<float> volume_zero_pos = volume_position - volume_size / 2;
+    xt::xarray<float> voxel_inc = xt::stack(xt::xtuple(
+                                    (x * volume_size) / (voxels_per_side - 1), 
+                                    (y * volume_size) / (voxels_per_side - 1),
+                                    (z * volume_size) / (voxels_per_side - 1)));
+
+
+    xt::xarray<std::complex<float>> complex_transient_data;
+    {
+        xt::xarray<float> tmp_data = get_transient_chunk(transient_data, 
+                                                         laser_grid_points, 
+                                                         camera_grid_points, 
+                                                         min_T_index, max_T_index,
+                                                         is_confocal, row_major);
+        complex_transient_data = phasor_pulse(tmp_data, wavelength, deltaT);
+    }
+
+
+    std::vector<ppd> point_pairs = precompute_distances(laser_position,
+                                                        laser_grid_positions,
+                                                        laser_grid_points,
+                                                        camera_position,
+                                                        camera_grid_positions,
+                                                        camera_grid_points,
+                                                        is_confocal);
+    uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
+    t0 = t0 + min_T_index * deltaT;
+
+    ComplexOctreeVolumeF ov(voxels_per_side, volume_size, volume_position);
+    if (use_octree)
+    {
+        if (!use_cpu) std::cerr << "GPU phasor not implemented, defaults to CPU\n";
+        octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, chunkedT);
+    }
+    else
+    {
+        if (use_cpu)
+        {
+            classic_backprojection(complex_transient_data, point_pairs, ov, -1, t0, deltaT, chunkedT);
+        }
+        else
+        {
+            call_cuda_complex_backprojection(complex_transient_data.data(),
+                                             complex_transient_data.size(),
+                                             chunkedT, point_pairs,
+                                             ov.volume().data(),
+                                             voxels_per_side.data(),
+                                             volume_zero_pos.data(),
+                                             voxel_inc.data(),
+                                             t0, deltaT);
+        }
+    }
+    
+    return ov.volume();
+}
+
 
 } // namespace bp
 

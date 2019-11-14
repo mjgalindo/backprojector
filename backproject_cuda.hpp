@@ -4,10 +4,12 @@
 #include <inttypes.h>
 #include <vector>
 #include <array>
+#include <complex>
 
-struct pointpair
+struct ppd
 {
-	float cam_point[3], laser_point[3];
+    float camera_point[3], laser_point[3];
+    float camera_wall, laser_wall;
 };
 
 #ifndef MAKE_DLL_EXPORT
@@ -17,9 +19,7 @@ struct pointpair
 MAKE_DLL_EXPORT
 void call_cuda_backprojection(const float* transient_chunk,
                               uint32_t transient_size, uint32_t T,
-                              const std::vector<pointpair> scanned_pairs,
-                              const float* camera_position,
-                              const float* laser_position,
+                              const std::vector<ppd> scanned_pairs,
                               float* voxel_volume,
                               const uint32_t* voxels_per_side,
                               const float* volume_zero_pos,
@@ -29,16 +29,23 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 MAKE_DLL_EXPORT
 void call_cuda_octree_backprojection(const float* transient_chunk,
-                              uint32_t transient_size, uint32_t T,
-                              const std::vector<pointpair> scanned_pairs,
-                              const float* camera_position,
-                              const float* laser_position,
-                              float* voxel_volume,
-                              const uint32_t* voxels_per_side,
-                              const float* volume_zero_pos,
-                              const float* voxel_inc,
-                              float t0,
-                              float deltaT);
+                                     uint32_t transient_size, uint32_t T,
+                                     const std::vector<ppd> scanned_pairs,
+                                     float* voxel_volume,
+                                     const uint32_t* voxels_per_side,
+                                     const float* volume_zero_pos,
+                                     const float* voxel_inc,
+                                     float t0,
+                                     float deltaT);
 
+MAKE_DLL_EXPORT
+void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk,
+                                            uint32_t transient_size, uint32_t T,
+                                            const std::vector<ppd> scanned_pairs,
+                                            std::complex<float>* voxel_volume,
+                                            const uint32_t* voxels_per_side,
+                                            const float* volume_zero_pos,
+                                            const float* voxel_inc,
+                                            float t0, float deltaT);
 
 #endif

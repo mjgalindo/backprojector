@@ -182,7 +182,7 @@ int main(int argc, const char *argv[])
                                                         volume_size,
                                                         voxel_resolution,
                                                         wavelength,
-                                                        use_octree);
+                                                        use_cpu, use_octree);
         volume.resize(complex_volume.shape());
         for (int i = 0; i < std::accumulate(volume.shape().begin(), volume.shape().end(), 1, std::multiplies<int>()); i++)
         {
