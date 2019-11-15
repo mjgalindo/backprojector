@@ -25,15 +25,7 @@
 __device__
 float distance(const float *p1, const float *p2) 
 {
-	// Checking if either is a nullptr reduces performance dramatically!
-	// if (p1 == nullptr || p2 == nullptr) return 0.0;
-    float buff[3];
-    for (int i = 0; i < 3; i++)
-    {
-        buff[i] = p1[i] - p2[i];
-    }
-
-    return norm3df(buff[0], buff[1], buff[2]);
+    return norm3df(p1[0]-p2[0], p1[1]-p2[1], p1[2]-p2[2]);
 }
 
 __forceinline__ __device__
@@ -109,15 +101,15 @@ cuComplex zero_value<cuComplex>()
 }
 
 template <typename FT>
-__device__
-FT cu_sum(FT a, FT b)
+__forceinline__ __device__
+FT cu_add(FT a, FT b)
 {
 	return a + b;
 }
 
 template <>
-__device__
-cuComplex cu_sum<cuComplex>(cuComplex a, cuComplex b)
+__forceinline__ __device__
+cuComplex cu_add<cuComplex>(cuComplex a, cuComplex b)
 {
 	return cuCaddf(a, b);
 }
@@ -164,7 +156,7 @@ void cuda_backprojection_impl(FT *transient_data,
 			int32_t max_time_index = min(*T, (int32_t) round((total_distance - *t0 + *voxel_footprint / 2) / *deltaT)) + 1;
 			for (int32_t sample_index = min_time_index; sample_index < max_time_index; sample_index++)
 			{
-				radiance_sum = cu_sum(radiance_sum, transient_data[pair_index * *T + sample_index]);
+				radiance_sum = cu_add(radiance_sum, transient_data[pair_index * *T + sample_index]);
 			}
 		}
 	}
@@ -174,11 +166,10 @@ void cuda_backprojection_impl(FT *transient_data,
 		// Compute the reduction in a single thread and write it
 		for (int i = 1; i < blockDim.x; i++) 
 		{
-			local_array[0] = cu_sum(local_array[0], local_array[i]);
+			local_array[0] = cu_add(local_array[0], local_array[i]);
 		}
 		voxel_volume[voxel_id] = local_array[0];
 	}
-    __syncthreads();
 }
 
 __device__
