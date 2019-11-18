@@ -701,7 +701,7 @@ xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &t
     ComplexOctreeVolumeF ov(voxels_per_side, volume_size, volume_position);
     if (use_octree)
     {
-        if (!use_cpu) std::cerr << "GPU phasor not implemented, defaults to CPU\n";
+        if (!use_cpu) std::cerr << "Octree GPU phasor not implemented, defaults to CPU\n";
         octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, chunkedT);
     }
     else
