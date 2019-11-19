@@ -459,12 +459,11 @@ xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
     max_T_index = ceil(max_T_index);
     auto dshape = transient_data.shape();
     dshape.back() = (size_t) (max_T_index - min_T_index);
-    size_t chunk_time_from = min_T_index > 0.0 ? 0 : -min_T_index;
-    auto chunk_time_to = xt::all();
+    size_t chunk_time_from = min_T_index > 0.0 ? 0 : abs(min_T_index);
+    size_t chunk_time_to = dshape.back();
 
     size_t orig_time_from = min_T_index > 0 ? min_T_index : 0;
-    size_t orig_time_to = max_T_index;
-
+    size_t orig_time_to = std::min({(size_t) transient_data.shape().back(), (size_t) max_T_index});
     // Set the chunk size to match the time range that will be accessed in backprojection
     // This includes expanding the chunk with zeros
     xt::xarray<AT> transient_chunk = xt::zeros<AT>(dshape);
@@ -490,6 +489,7 @@ xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
     {
         if (assume_row_major)
         {
+            printf("\n%d %d %d %d \n", orig_time_from, orig_time_to, chunk_time_from, chunk_time_to); 
             xt::view(transient_chunk, xt::all(), xt::all(), xt::all(), xt::all(), xt::range(chunk_time_from, chunk_time_to)) =
                 xt::view(transient_data, xt::all(), xt::all(), xt::all(), xt::all(), xt::range(orig_time_from, orig_time_to));
         }
@@ -598,12 +598,10 @@ xt::xarray<float> gpu_backproject(
         transient_data, laser_grid_points, camera_grid_points, 
         min_T_index, max_T_index, is_confocal, assume_row_major);
 
-    uint32_t total_transient_size = std::accumulate(transient_chunk.shape().begin(), 
-                                                    transient_chunk.shape().end(), 1, 
-                                                    std::multiplies<uint32_t>());
+    uint32_t total_transient_size = transient_chunk.size();
     t0 = t0 + min_T_index * deltaT;
     std::cout << " Done!" << std::endl;
-
+    std::cout << "BElieve it or not, T0 is " << t0 << std::endl;
     uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
     xt::xarray<float> voxel_volume = xt::zeros<float>(voxels_per_side);
     if (use_octree)
