@@ -455,8 +455,8 @@ xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
                                    float min_T_index, float max_T_index,
                                    bool is_confocal, bool assume_row_major)
 {
-    min_T_index = floor(min_T_index) -200;
-    max_T_index = ceil(max_T_index) +200;
+    min_T_index = floor(min_T_index);
+    max_T_index = ceil(max_T_index);
     auto dshape = transient_data.shape();
     dshape.back() = (size_t) (max_T_index - min_T_index);
     size_t chunk_time_from = min_T_index > 0.0 ? 0 : -min_T_index;
