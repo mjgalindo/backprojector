@@ -47,7 +47,8 @@ public:
                   const xt::xarray<FT>& volume_position,
                   bool double_buffered=false) 
     {
-        m_max_voxels = xt::xarray<size_t>(volume.shape());
+        auto vshape = volume.shape();
+        m_max_voxels = xt::xarray<size_t>({vshape[0], vshape[1], vshape[2]});
         m_volume_size = volume_size;
         m_volume_position = volume_position;
         m_voxel_size = volume_size / m_max_voxels;

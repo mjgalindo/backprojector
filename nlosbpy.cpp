@@ -27,32 +27,20 @@ inline xt::pyarray<float> backproject(
     bool assume_row_major = false,
     bool use_cpu = false)
 {
-    if (use_cpu)
-    {
-        return bp::backproject(transient_data,
-                    camera_grid_positions,
-                    laser_grid_positions,
-                    camera_position,
-                    laser_position,
-                    t0, deltaT, is_confocal,
-                    volume_position,
-                    volume_size[0],
-                    voxels_per_side[0]);
-    }
-    else
-    {
-        return bp::gpu_backproject(transient_data,
-                    camera_grid_positions,
-                    laser_grid_positions,
-                    camera_position,
-                    laser_position,
-                    t0, deltaT, is_confocal,
-                    volume_position,
-                    volume_size,
-                    voxels_per_side,
-                    assume_row_major,
-                    wall_normal);
-    }
+    return bp::backproject(transient_data,
+                camera_grid_positions,
+                laser_grid_positions,
+                camera_position,
+                laser_position,
+                t0, deltaT, 
+                is_confocal ? nlos::CaptureStrategy::Confocal : nlos::CaptureStrategy::Exhaustive,
+                volume_position,
+                volume_size,
+                voxels_per_side,
+                use_cpu ? nlos::Compute::CPU : nlos::Compute::GPU,
+                assume_row_major ? nlos::DataOrder::RowMajor : nlos::DataOrder::ColumnMajor,
+                nlos::VolumeAccess::Naive,
+                wall_normal);
 }
 
 inline xt::pyarray<std::complex<float>> phasor_reconstruction(
@@ -76,13 +64,15 @@ inline xt::pyarray<std::complex<float>> phasor_reconstruction(
                                      laser_grid_positions,
                                      camera_position,
                                      laser_position,
-                                     t0, deltaT, is_confocal,
+                                     t0, deltaT,
+                                     is_confocal ? nlos::CaptureStrategy::Confocal : nlos::CaptureStrategy::Exhaustive,
                                      volume_position,
                                      volume_size[0],
                                      voxels_per_side[0],
                                      wavelength,
-                                     use_cpu, false,
-                                     assume_row_major);
+                                     use_cpu ? nlos::Compute::CPU : nlos::Compute::GPU,
+                                     nlos::VolumeAccess::Naive,
+                                     assume_row_major ? nlos::DataOrder::RowMajor : nlos::DataOrder::ColumnMajor);
 }
 
 // Python Module and Docstrings

@@ -17,11 +17,11 @@
 #include <xtensor/xfunction.hpp>
 #include <xtensor/xview.hpp>
 #include <xtensor/xmath.hpp>
+#include <xtensor/xfixed.hpp>
+#include <xtensor/xnoalias.hpp>
+#include <xtensor/xstrided_view.hpp>
+#include <xtensor/xtensor.hpp>
 
-#include "xtensor/xfixed.hpp"
-#include "xtensor/xnoalias.hpp"
-#include "xtensor/xstrided_view.hpp"
-#include "xtensor/xtensor.hpp"
 #define array_type xt::xarray
 #else
 template <typename T>
@@ -67,6 +67,11 @@ struct simple_tensor {
 };
 #define array_type simple_tensor
 #endif
+
+#include "nlos_enums.hpp"
+
+namespace nlos
+{
 
 class NLOSData {
     private:
@@ -130,13 +135,13 @@ class NLOSData {
     array_type<T> load_transient_data_dataset(const H5::DataSet &dataset, 
                                               const std::vector<uint32_t>& bounces,
                                               bool sum_bounces=false,
-                                              bool row_major=false) {
+                                              DataOrder data_order=ColumnMajor) {
         assert(bounces.size() > 0);
         H5::DataSpace dataspace = dataset.getSpace();
         int rank = dataspace.getSimpleExtentNdims();
         std::vector<hsize_t> dimensions(rank);
         dataspace.getSimpleExtentDims(dimensions.data(), nullptr);
-        size_t bounce_axis = row_major ? rank - 3 : 2;
+        size_t bounce_axis = data_order == RowMajor ? rank - 3 : 2;
         hsize_t num_elements = 1;
         for (int i = 0; i < rank; i++) {
             // Account only for the chosen bounces
@@ -188,7 +193,7 @@ class NLOSData {
     public:
     NLOSData(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
-        is_row_major = false;
+        data_order == ColumnMajor;
         if (file.attrExists("data order"))
         {
             H5::Attribute att(file.openAttribute("data order"));
@@ -197,7 +202,7 @@ class NLOSData {
             att.read(stype, engine);
             if (engine.compare("row-major") == 0)
             {
-                is_row_major = true;
+                data_order = RowMajor;
             }
         }
         if (file.attrExists("engine"))
@@ -207,7 +212,7 @@ class NLOSData {
             att.read(stype, engine);
         }
 
-        data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces, sum_bounces, is_row_major);
+        data = load_transient_data_dataset<float>(file.openDataSet(DS_DATA), bounces, sum_bounces, data_order);
 		camera_grid_positions = load_field_array<float>(file.openDataSet(DS_CAM_GRID_POSITIONS));
         camera_grid_normals = load_field_array<float>(file.openDataSet(DS_CAM_GRID_NORMALS));
         camera_position = load_field_array<float>(file.openDataSet(DS_CAM_POSITION));
@@ -224,7 +229,7 @@ class NLOSData {
         t0 = load_field_array<float>(file.openDataSet(DS_T0));
         bins = load_field_array<int>(file.openDataSet(DS_T));
         deltat = load_field_array<float>(file.openDataSet(DS_DELTA_T));
-        is_confocal = load_field_array<int>(file.openDataSet(DS_IS_CONFOCAL));
+        capture = load_field_array<int>(file.openDataSet(DS_IS_CONFOCAL))[0] ? CaptureStrategy::Confocal : CaptureStrategy::Exhaustive;
     }
     
     // Spad capture volume
@@ -254,9 +259,10 @@ class NLOSData {
     array_type<float> t0; // Time at which the captures start 
     array_type<int> bins;  // Number of time instants recorded (number of columns in the data)
     array_type<float> deltat;  // Per pixel aperture duration (time resolution)
-    array_type<int> is_confocal; // Boolean value. 1 if the dataset is confocal, 0 if all combinations 
-    // of laser points and spad points were captured/rendered
+    CaptureStrategy capture; 
 
-    bool is_row_major = false;
+    DataOrder data_order = DataOrder::RowMajor;
     std::string engine = "default";
 };
+
+}; // namespace nlos

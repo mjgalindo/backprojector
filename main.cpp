@@ -6,6 +6,8 @@
 
 using namespace H5;
 
+using namespace nlos;
+
 void save_volume(const std::string &output_file,
                  const xt::xarray<float> &volume)
 {
@@ -137,7 +139,6 @@ int main(int argc, const char *argv[])
 
     NLOSData data(filename, bounces, true);
 
-    bool is_confocal = data.is_confocal[0];
     float deltaT = data.deltat[0];
     float t0 = data.t0[0];
 
@@ -156,9 +157,9 @@ int main(int argc, const char *argv[])
     xt::xarray<float> transient_data;
 
     // Squeeze channel and bounce dimensions
-    if (data.is_row_major)
+    if (data.data_order == RowMajor)
     {
-        if (is_confocal)
+        if (data.capture == Confocal)
             transient_data = xt::view(data.data, xt::all(), xt::all(), 0, xt::all(), 0);
         else
             transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0, xt::all(), 0);
@@ -167,8 +168,17 @@ int main(int argc, const char *argv[])
     {
         transient_data = xt::view(data.data, 0, xt::all(), 0, xt::all());
     }
+
+    if (data.data_order == ColumnMajor) 
+    {
+        std::cerr << "Can't deal with column-major datasets now\n";
+        exit(1);
+    }
     
     xt::xarray<float> volume;
+
+    auto compute = use_cpu ? Compute::CPU : Compute::GPU;
+    auto vol_access = use_octree ? VolumeAccess::Octree : VolumeAccess::Naive;
 
     if (use_phasor_fields)
     {
@@ -177,12 +187,12 @@ int main(int argc, const char *argv[])
                                                         data.laser_grid_positions,
                                                         data.camera_position,
                                                         data.laser_position,
-                                                        t0, deltaT, is_confocal,
+                                                        t0, deltaT, data.capture,
                                                         volume_position,
                                                         volume_size,
                                                         voxel_resolution,
                                                         wavelength,
-                                                        use_cpu, use_octree);
+                                                        compute, vol_access);
         volume.resize(complex_volume.shape());
         for (int i = 0; i < std::accumulate(volume.shape().begin(), volume.shape().end(), 1, std::multiplies<int>()); i++)
         {
@@ -191,32 +201,18 @@ int main(int argc, const char *argv[])
     }
     else
     {
-        if (use_cpu)
-        {
-            volume = bp::backproject(transient_data,
+        volume = bp::backproject(transient_data,
                                     data.camera_grid_positions,
                                     data.laser_grid_positions,
                                     data.camera_position,
                                     data.laser_position,
-                                    t0, deltaT, is_confocal,
+                                    t0, deltaT, data.capture,
                                     volume_position,
                                     volume_size,
                                     voxel_resolution,
-                                    use_octree);
-        }
-        else
-        {
-            volume = bp::gpu_backproject(transient_data,
-                                        data.camera_grid_positions,
-                                        data.laser_grid_positions,
-                                        data.camera_position,
-                                        data.laser_position,
-                                        t0, deltaT, is_confocal,
-                                        volume_position,
-                                        volume_size,
-                                        voxel_resolution,
-                                        data.is_row_major);
-        }
+                                    compute,
+                                    data.data_order,
+                                    vol_access);
     }
     
     if (outfile.size() == 0)
