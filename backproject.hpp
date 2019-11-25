@@ -1,7 +1,6 @@
 #ifndef BACKPROJECT_HPP
 #define BACKPROJECT_HPP
 
-#define USE_XTENSOR
 #define XTENSOR_ENABLE_XSIMD
 
 #include <complex>
@@ -779,31 +778,31 @@ xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &t
                                                         camera_grid_positions,
                                                         camera_grid_points,
                                                         capture);
-    uint32_t chunkedT = (uint32_t)(max_T_index - min_T_index);
-    t0 = t0 + min_T_index * deltaT;
+
+    float chunked_t0 = t0 + min_T_index * deltaT;
 
     ComplexOctreeVolumeF ov(voxels_per_side, volume_size, volume_position);
     if (vol_access == Octree)
     {
         if (compute != nlos::Compute::GPU) std::cerr << "Octree GPU phasor not implemented, defaults to CPU\n";
-        octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, chunkedT);
+        octree_backprojection(complex_transient_data, point_pairs, ov, t0, deltaT, complex_transient_data.shape().back());
     }
     else
     {
         if (compute == nlos::Compute::CPU)
         {
-            classic_backprojection(complex_transient_data, point_pairs, ov, -1, t0, deltaT, chunkedT);
+            classic_backprojection(complex_transient_data, point_pairs, ov, -1, chunked_t0, deltaT, complex_transient_data.shape().back());
         }
         else if (compute == nlos::Compute::GPU)
         {
             call_cuda_complex_backprojection(complex_transient_data.data(),
                                              complex_transient_data.size(),
-                                             chunkedT, point_pairs,
+                                             complex_transient_data.shape().back(), point_pairs,
                                              ov.volume().data(),
                                              voxels_per_side.data(),
                                              volume_zero_pos.data(),
                                              voxel_inc.data(),
-                                             t0, deltaT);
+                                             chunked_t0, deltaT);
         }
     }
     
