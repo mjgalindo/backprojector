@@ -28,10 +28,22 @@ namespace bp
 {
 using namespace nlos;
 
+/**
+ * @brief Distance between two 3D points
+ * 
+ * Computes the euclidean distance between two points in 3D space.
+ * 
+ * @param p1 first 3D point
+ * @param p2 second 3D point
+ * 
+ * @tparam V1 The type of a container holding 3 elements.
+ * @tparam V2 The type of a container holding 3 elements.
+ * @return distance between the points
+ */
 template <typename V1, typename V2>
-float distance(const V1 &p1, const V2 &p2)
+double distance(const V1 &p1, const V2 &p2)
 {
-    std::array<float, 3> tmp;
+    std::array<double, 3> tmp;
     for (int i = 0; i < 3; i++)
     {
         tmp[i] = p1[i] - p2[i];
@@ -41,11 +53,26 @@ float distance(const V1 &p1, const V2 &p2)
     return sqrt(tmp[0] + tmp[1] + tmp[2]);
 }
 
-inline double round(double x)
-{
-    return floor(x + 0.5);
-}
-
+/**
+ * @brief Sums all radiance matching a single voxel
+ * 
+ * Sums the radiance in a transient image for all camera and laser
+ * pairs. Considers the transient data to have point_pairs.size() 
+ * rows of size T, and accesses the value that is at a distance
+ * given by the pairs and the voxel position. It also considers the
+ * values in a diameter given by access_width.
+ * 
+ * @param transient_data row-major transient image with last dimension length T
+ * @param point_pairs camera / laser position pairs and precomputed distances. point_pairs.size() must be <= T
+ * @param voxel_position 3D position of the target voxel
+ * @param t0 first instant recorded in transient_data in meters
+ * @param deltaT exposure for each pixel in meters
+ * @param T length of each transient_data row
+ * @param access_width diameter to integrate over in each transient_data row in meters
+ * 
+ * @tparam AT Type of the values in the transient_data. Can be real (float, double) or complex numbers (std::complex)
+ * @return integrated radiance over all captured points
+ */
 template <typename AT>
 AT accumulate_radiance(const xt::xarray<AT>& transient_data,
                        const std::vector<ppd>& point_pairs,
@@ -69,6 +96,17 @@ AT accumulate_radiance(const xt::xarray<AT>& transient_data,
     return radiance_sum;
 }
 
+/**
+ * @brief Checks if the value is within the threshold
+ * 
+ * Returns true when the value is over the threshold.
+ * 
+ * @param value value to check
+ * @param threshold minimum valid value 
+ * 
+ * @tparam AT Type for the values. Can be real (float, double) or complex numbers (std::complex)
+ * @return true if value >= threshold, false otherwise
+ */
 template <typename AT>
 bool within_threshold(AT value, AT threshold)
 {
@@ -81,6 +119,23 @@ bool within_threshold(std::complex<AT> value, std::complex<AT> threshold)
     return within_threshold(std::abs(value), std::abs(threshold));
 }
 
+/**
+ * @brief Backproject transient data into a specified volume.
+ * 
+ * Runs the backprojection algorithm over the given volume (adding to it).
+ * 
+ * @param transient_data row-major transient image with last dimension length T
+ * @param point_pairs camera / laser position pairs and precomputed distances. point_pairs.size() must be <= 
+ * @param volume In/out 3D texture. It's voxels will accumulate the radiance over the whole transient image.
+ * @param depth volume lookup depth
+ * @param t0 first time instant recorded in transient_data
+ * @param deltaT time exposure for each pixel in seconds
+ * @param T length of each transient_data row
+ * @param threshold minimum value to consider running backprojection in a voxel
+ * @param verbose flag to enable/disable progress information
+ * 
+ * @tparam AT Type for the values. Can be real (float, double) or complex numbers (std::complex)
+ */
 template <typename AT>
 void classic_backprojection(const xt::xarray<AT>& transient_data, 
                             const std::vector<ppd>& point_pairs,
@@ -186,7 +241,7 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
     volume.reset_buffer();
     while (depth <= volume.max_depth())
     {
-        auto max_voxels = volume.max_voxels(depth);
+        auto max_voxels = volume.max_voxels(depth); 
         std::cout << "Backprojecting depth " << depth << " with threshold " << threshold << " size " << max_voxels << std::endl;
         classic_backprojection(transient_data, point_pairs, volume, depth, t0, deltaT, T, threshold, verbose);
         auto shape = xt::view(volume.volume(), 
