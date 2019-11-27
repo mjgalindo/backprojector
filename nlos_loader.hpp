@@ -127,7 +127,6 @@ class NLOSData {
     public:
     NLOSData(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false) {
         H5::H5File file(file_path, H5F_ACC_RDONLY);
-        data_order == ColumnMajor;
         if (file.attrExists("data order"))
         {
             H5::Attribute att(file.openAttribute("data order"));
@@ -137,6 +136,10 @@ class NLOSData {
             if (engine.compare("row-major") == 0)
             {
                 data_order = RowMajor;
+            }
+            else if (engine.compare("column-major") == 0)
+            {
+                data_order = ColumnMajor;
             }
         }
         if (file.attrExists("engine"))
@@ -195,7 +198,7 @@ class NLOSData {
     xt::xarray<float> deltat;  // Per pixel aperture duration (time resolution)
     CaptureStrategy capture; 
 
-    DataOrder data_order = DataOrder::RowMajor;
+    DataOrder data_order = DataOrder::ColumnMajor;
     std::string engine = "default";
 };
 
