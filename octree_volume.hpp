@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <H5Cpp.h>
 #include <xtensor/xarray.hpp>
 
 #include "iter3D.hpp"
@@ -191,5 +192,29 @@ using SimpleOctreeVolume = OctreeVolume<float, float>;
 template <typename DT>
 using OctreeVolumeD = OctreeVolume<DT, double>;
 
+
+static void save_volume(const std::string &output_file,
+                        const xt::xarray<float> &volume,
+                        const std::string &dataset_name="voxelVolume")
+{
+    H5::H5File file(output_file, H5F_ACC_TRUNC);
+    auto shape = volume.shape();
+    std::vector<hsize_t> fdim = {shape[0], shape[1], shape[2]};
+    std::vector<hsize_t> start = {0, 0, 0};
+    std::vector<hsize_t> count = {shape[0], shape[1], shape[2]};
+    std::vector<hsize_t> chunks = {std::min(32ul, volume.shape()[0]), 
+                                   std::min(32ul, volume.shape()[1]), 
+                                   std::min(32ul, volume.shape()[2])};
+
+    float fillvalue = NAN;
+    H5::DSetCreatPropList proplist;
+    proplist.setDeflate(4);
+    proplist.setFillValue(H5::PredType::NATIVE_FLOAT, &fillvalue);
+    proplist.setChunk(chunks.size(), chunks.data());
+
+    H5::DataSpace fspace(fdim.size(), fdim.data());
+    H5::DataSet dataset = file.createDataSet(dataset_name, H5::PredType::NATIVE_FLOAT, fspace, proplist);
+    dataset.write(volume.data(), H5::PredType::NATIVE_FLOAT);
+}
 
 #endif // OCTREEVOL_HPP

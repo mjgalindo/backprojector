@@ -4,32 +4,7 @@
 
 #include "args.hxx"
 
-using namespace H5;
-
 using namespace nlos;
-
-void save_volume(const std::string &output_file,
-                 const xt::xarray<float> &volume)
-{
-    H5File file(output_file, H5F_ACC_TRUNC);
-    auto shape = volume.shape();
-    std::vector<hsize_t> fdim = {shape[0], shape[1], shape[2]};
-    std::vector<hsize_t> start = {0, 0, 0};
-    std::vector<hsize_t> count = {shape[0], shape[1], shape[2]};
-    std::vector<hsize_t> chunks = {std::min(32ul, volume.shape()[0]), 
-                                   std::min(32ul, volume.shape()[1]), 
-                                   std::min(32ul, volume.shape()[2])};
-
-    float fillvalue = NAN;
-    DSetCreatPropList proplist;
-    proplist.setDeflate(4);
-    proplist.setFillValue(PredType::NATIVE_FLOAT, &fillvalue);
-    proplist.setChunk(chunks.size(), chunks.data());
-
-    DataSpace fspace(fdim.size(), fdim.data());
-    DataSet dataset = file.createDataSet("voxelVolume", PredType::NATIVE_FLOAT, fspace, proplist);
-    dataset.write(volume.data(), PredType::NATIVE_FLOAT);
-}
 
 template <typename T, unsigned int N>
 struct ArrayReader
