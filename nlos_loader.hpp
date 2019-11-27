@@ -1,4 +1,6 @@
-#pragma once
+#ifndef NLOSDATA_HPP
+#define NLOSDATA_HPP
+
 
 #include <iostream>
 #include <string>
@@ -198,3 +200,5 @@ class NLOSData {
 };
 
 }; // namespace nlos
+
+#endif // NLOS_DATA_HPP

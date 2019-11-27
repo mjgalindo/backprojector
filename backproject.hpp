@@ -286,6 +286,7 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
     volume = ov.volume();
 }
 
+
 std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
                                       const xt::xarray<float>& laser_grid_positions,
                                       const xt::xarray<uint32_t>& laser_grid_points,
@@ -300,6 +301,7 @@ std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
         laser_grid_points[0] * laser_grid_points[1];
 
     std::vector<ppd> point_pairs(number_of_pairs);
+
     // Calculate distances
     switch(capture)
     {

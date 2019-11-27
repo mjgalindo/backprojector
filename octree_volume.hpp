@@ -25,10 +25,10 @@ protected:
 public:
     enum BuffType {Main, Buffer};
 
-    OctreeVolume(const xt::xarray<uint32_t>& voxel_axes,
-                  const xt::xarray<FT>& volume_size,
-                  const xt::xarray<FT>& volume_position,
-                  bool double_buffered=false) 
+    OctreeVolume(const xt::xarray<size_t>& voxel_axes,
+                 const xt::xarray<FT>& volume_size,
+                 const xt::xarray<FT>& volume_position,
+                 bool double_buffered=false) 
     {
         m_max_voxels = voxel_axes;
         m_volume_size = volume_size; 
