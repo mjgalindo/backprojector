@@ -1,7 +1,7 @@
 #include "backproject.hpp"
 #include "backproject_cuda.hpp"
-#include "nlos_loader.hpp"
-
+#include "dataset_loader.hpp"
+#include "nlos_dataset.hpp"
 #include "args.hxx"
 
 using namespace nlos;
@@ -112,7 +112,7 @@ int main(int argc, const char *argv[])
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
-    NLOSData data(filename, bounces, true);
+    NLOSDataset data = DatasetLoader::read_NLOS_dataset(filename, bounces, true);
 
     float deltaT = data.deltat[0];
     float t0 = data.t0[0];
