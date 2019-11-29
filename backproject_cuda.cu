@@ -30,7 +30,7 @@ float distance(const float *p1, const float *p2)
 
 __forceinline__ __device__
 void compute_distance(const float * voxel_position,
-					  const ppd * pair,
+					  const CameraLaserPair * pair,
 					  float * distance_out)
 {
 	// From the laser to the wall
@@ -119,7 +119,7 @@ __global__
 void cuda_backprojection_impl(FT *transient_data,
                               uint32_t *T,
                               uint32_t *num_pairs,
-                              ppd *scanned_pairs,
+                              CameraLaserPair *scanned_pairs,
                               FT *voxel_volume,
                               float *volume_zero_pos,
                               float *voxel_inc,
@@ -183,7 +183,7 @@ __global__
 void cuda_octree_backprojection_impl(float const *transient_data,
 									 uint32_t const *T,
 									 uint32_t const *num_pairs,
-									 ppd const *scanned_pairs,
+									 CameraLaserPair const *scanned_pairs,
 									 float *voxel_volume,
 									 float const *volume_zero_pos,
 									 float const *voxel_inc,
@@ -368,7 +368,7 @@ void cuda_octree_backprojection_impl(float const *transient_data,
 
 void call_cuda_backprojection(const float* transient_chunk,
 							  uint32_t transient_size, uint32_t T,
-							  const std::vector<ppd> scanned_pairs,
+							  const std::vector<CameraLaserPair> scanned_pairs,
 							  float* voxel_volume,
 							  const uint32_t* voxels_per_side,
 							  const float* volume_zero_pos,
@@ -380,7 +380,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
 	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
-	thrust::device_vector<ppd> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
+	thrust::device_vector<CameraLaserPair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
 	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
 	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);
@@ -501,7 +501,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 
 void call_cuda_octree_backprojection(const float* transient_chunk,
 									 uint32_t transient_size, uint32_t T,
-									 const std::vector<ppd> scanned_pairs,
+									 const std::vector<CameraLaserPair> scanned_pairs,
 									 float* voxel_volume,
 									 const uint32_t* voxels_per_side,
 									 const float* volume_zero_pos,
@@ -514,7 +514,7 @@ void call_cuda_octree_backprojection(const float* transient_chunk,
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
 	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
-	thrust::device_vector<ppd> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
+	thrust::device_vector<CameraLaserPair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
 	thrust::device_vector<float> voxel_volume_gpu(voxel_volume, voxel_volume + nvoxels);
 	const uint32_t nauxvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2] / 8;
@@ -669,7 +669,7 @@ void call_cuda_octree_backprojection(const float* transient_chunk,
 
 void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk,
 											uint32_t transient_size, uint32_t T,
-											const std::vector<ppd> scanned_pairs,
+											const std::vector<CameraLaserPair> scanned_pairs,
 											std::complex<float>* voxel_volume,
 											const uint32_t* voxels_per_side,
 											const float* volume_zero_pos,
@@ -682,7 +682,7 @@ void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
 	thrust::device_vector<uint32_t> num_pairs_gpu(&num_pairs, &num_pairs + 1);
-	thrust::device_vector<ppd> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
+	thrust::device_vector<CameraLaserPair> scanned_pairs_gpu(scanned_pairs.begin(), scanned_pairs.end());
 	const uint32_t nvoxels = voxels_per_side[0] * voxels_per_side[1] * voxels_per_side[2];
 	thrust::device_vector<cuComplex> voxel_volume_gpu((cuComplex*)voxel_volume, ((cuComplex*)voxel_volume) + nvoxels);
 	thrust::device_vector<float> volume_zero_pos_gpu(volume_zero_pos, volume_zero_pos + 3);

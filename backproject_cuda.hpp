@@ -6,7 +6,7 @@
 #include <array>
 #include <complex>
 
-struct ppd
+struct CameraLaserPair
 {
     float camera_point[3], laser_point[3];
     float camera_wall, laser_wall;
@@ -19,7 +19,7 @@ struct ppd
 MAKE_DLL_EXPORT
 void call_cuda_backprojection(const float* transient_chunk,
                               uint32_t transient_size, uint32_t T,
-                              const std::vector<ppd> scanned_pairs,
+                              const std::vector<CameraLaserPair> scanned_pairs,
                               float* voxel_volume,
                               const uint32_t* voxels_per_side,
                               const float* volume_zero_pos,
@@ -30,7 +30,7 @@ void call_cuda_backprojection(const float* transient_chunk,
 MAKE_DLL_EXPORT
 void call_cuda_octree_backprojection(const float* transient_chunk,
                                      uint32_t transient_size, uint32_t T,
-                                     const std::vector<ppd> scanned_pairs,
+                                     const std::vector<CameraLaserPair> scanned_pairs,
                                      float* voxel_volume,
                                      const uint32_t* voxels_per_side,
                                      const float* volume_zero_pos,
@@ -41,7 +41,7 @@ void call_cuda_octree_backprojection(const float* transient_chunk,
 MAKE_DLL_EXPORT
 void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk,
                                             uint32_t transient_size, uint32_t T,
-                                            const std::vector<ppd> scanned_pairs,
+                                            const std::vector<CameraLaserPair> scanned_pairs,
                                             std::complex<float>* voxel_volume,
                                             const uint32_t* voxels_per_side,
                                             const float* volume_zero_pos,

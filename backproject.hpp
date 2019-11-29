@@ -75,7 +75,7 @@ double distance(const V1 &p1, const V2 &p2)
  */
 template <typename AT>
 AT accumulate_radiance(const xt::xarray<AT>& transient_data,
-                       const std::vector<ppd>& point_pairs,
+                       const std::vector<CameraLaserPair>& point_pairs,
                        const xt::xarray<float>& voxel_position,
                        float t0, float deltaT, uint32_t T, float access_width)
 {
@@ -138,7 +138,7 @@ bool within_threshold(std::complex<AT> value, std::complex<AT> threshold)
  */
 template <typename AT>
 void classic_backprojection(const xt::xarray<AT>& transient_data, 
-                            const std::vector<ppd>& point_pairs,
+                            const std::vector<CameraLaserPair>& point_pairs,
                             OctreeVolumeF<AT>& volume, int depth,
                             float t0, float deltaT, uint32_t T,
                             AT threshold = 0.0f, bool verbose=true)
@@ -217,9 +217,27 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
     }
 }
 
+/**
+ * @brief Backproject transient data into a specified volume.
+ * 
+ * Runs the backprojection algorithm over the given volume (adding to it).
+ * 
+ * @param transient_data row-major transient image with last dimension length T
+ * @param point_pairs camera / laser position pairs and precomputed distances. point_pairs.size() must be <= 
+ * @param volume_size size of the volume to backproject in XYZ units in space.
+ * @param volume_position XYZ center position of the volume to backproject
+ * @param volume In/out 3D texture. It's voxels will accumulate the radiance over the whole transient image.
+ * @param t0 first time instant recorded in transient_data
+ * @param deltaT time exposure for each pixel in seconds
+ * @param T length of each transient_data row
+ * @param threshold minimum value to consider running backprojection in a voxel
+ * @param verbose flag to enable/disable progress information
+ * 
+ * @tparam AT Type for the values. Can be real (float, double) or complex numbers (std::complex)
+ */
 template <typename AT>
 void classic_backprojection(const xt::xarray<AT>& transient_data, 
-                            const std::vector<ppd>& point_pairs,
+                            const std::vector<CameraLaserPair>& point_pairs,
                             const xt::xarray<float>& volume_size,
                             const xt::xarray<float>& volume_position,
                             xt::xarray<AT>& volume,
@@ -230,9 +248,24 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
     volume = ov.volume();
 }
 
+/**
+ * @brief Backproject transient data into a specified volume using an Octree hierarchy.
+ * 
+ * Backproject transient data into a specified volume using an Octree hierarchy for performance.
+ * 
+ * @param transient_data row-major transient image with last dimension length T
+ * @param point_pairs camera / laser position pairs and precomputed distances. point_pairs.size() must be <= 
+ * @param volume In/out 3D texture. It's voxels will accumulate the radiance over the whole transient image.
+ * @param t0 first time instant recorded in transient_data
+ * @param deltaT time exposure for each pixel in seconds
+ * @param T length of each transient_data row
+ * @param verbose flag to enable/disable progress information
+ * 
+ * @tparam AT Type for the values. Can be real (float, double) or complex numbers (std::complex)
+ */
 template <typename AT>
 void octree_backprojection(const xt::xarray<AT>& transient_data, 
-                           const std::vector<ppd>& point_pairs,
+                           const std::vector<CameraLaserPair>& point_pairs,
                            OctreeVolumeF<AT>& volume,
                            float t0, float deltaT, uint32_t T, bool verbose=true)
 {
@@ -273,9 +306,26 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
     }
 }
 
+/**
+ * @brief Backproject transient data into a specified volume using an Octree hierarchy.
+ * 
+ * Backproject transient data into a specified volume using an Octree hierarchy for performance.
+ * 
+ * @param transient_data row-major transient image with last dimension length T
+ * @param point_pairs camera / laser position pairs and precomputed distances. point_pairs.size() must be <= 
+ * @param volume_size size of the volume to backproject in XYZ units in space.
+ * @param volume_position XYZ center position of the volume to backproject
+ * @param volume In/out 3D texture. It's voxels will accumulate the radiance over the whole transient image.
+ * @param t0 first time instant recorded in transient_data
+ * @param deltaT time exposure for each pixel in seconds
+ * @param T length of each transient_data row
+ * @param verbose flag to enable/disable progress information
+ * 
+ * @tparam AT Type for the values. Can be real (float, double) or complex numbers (std::complex)
+ */
 template <typename AT>
 void octree_backprojection(const xt::xarray<AT>& transient_data, 
-                            const std::vector<ppd>& point_pairs,
+                            const std::vector<CameraLaserPair>& point_pairs,
                             const xt::xarray<float>& volume_size,
                             const xt::xarray<float>& volume_position,
                             xt::xarray<AT>& volume,
@@ -287,20 +337,30 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
 }
 
 
-std::vector<ppd> precompute_distances(const xt::xarray<float>& laser_position,
-                                      const xt::xarray<float>& laser_grid_positions,
-                                      const xt::xarray<uint32_t>& laser_grid_points,
-                                      const xt::xarray<float>& camera_position,
-                                      const xt::xarray<float>& camera_grid_positions,
-                                      const xt::xarray<uint32_t>& camera_grid_points,
-                                      CaptureStrategy capture)
+/**
+ * @brief Precomputes Camera-wall and laser wall distsances
+ * 
+ * Computes the distance between the camera and all camera points and the laser
+ * and all laser points. The result is stored by pairs, with all camera points
+ * being computed for all laser points (raw-major order with [laser_x, laser_y, cam_x, cam_y])
+ * 
+ * @param laser_position XYZ position of the laser
+ * @param laser_grid_positions
+ */ 
+std::vector<CameraLaserPair> precompute_distances(const xt::xarray<float>& laser_position,
+                                                const xt::xarray<float>& laser_grid_positions,
+                                                const xt::xarray<uint32_t>& laser_grid_points,
+                                                const xt::xarray<float>& camera_position,
+                                                const xt::xarray<float>& camera_grid_positions,
+                                                const xt::xarray<uint32_t>& camera_grid_points,
+                                                CaptureStrategy capture)
 {
     uint32_t number_of_pairs = capture == CaptureStrategy::Confocal ? 
         camera_grid_points[0] * camera_grid_points[1] : 
         camera_grid_points[0] * camera_grid_points[1] * 
         laser_grid_points[0] * laser_grid_points[1];
 
-    std::vector<ppd> point_pairs(number_of_pairs);
+    std::vector<CameraLaserPair> point_pairs(number_of_pairs);
 
     // Calculate distances
     switch(capture)
@@ -656,7 +716,7 @@ xt::xarray<float> backproject(
         data_order
     );
 
-    std::vector<ppd> point_pairs = precompute_distances(laser_position,
+    std::vector<CameraLaserPair> point_pairs = precompute_distances(laser_position,
                                                         laser_grid_positions,
                                                         laser_grid_points,
                                                         camera_position,
@@ -828,7 +888,7 @@ xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &t
         complex_transient_data = phasor_pulse(tmp_data, wavelength, deltaT);
     }
 
-    std::vector<ppd> point_pairs = precompute_distances(laser_position,
+    std::vector<CameraLaserPair> point_pairs = precompute_distances(laser_position,
                                                         laser_grid_positions,
                                                         laser_grid_points,
                                                         camera_position,
