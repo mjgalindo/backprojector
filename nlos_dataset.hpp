@@ -41,7 +41,7 @@ public:
     xt::xarray<float> t0; // Time at which the captures start 
     xt::xarray<int> bins;  // Number of time instants recorded (number of columns in the data)
     xt::xarray<float> deltat;  // Per pixel aperture duration (time resolution)
-    CaptureStrategy capture; 
+    CaptureStrategy capture;
 
     DataOrder data_order = DataOrder::ColumnMajor;
     std::string engine = "default";

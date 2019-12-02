@@ -87,9 +87,9 @@ private:
      */ 
     template <typename T>
     static xt::xarray<T> load_transient_data_dataset(const H5::DataSet &dataset, 
-                                              const std::vector<uint32_t>& bounces,
-                                              bool sum_bounces=false,
-                                              DataOrder data_order=ColumnMajor) 
+                                                     const std::vector<uint32_t>& bounces,
+                                                     bool sum_bounces=false,
+                                                     DataOrder data_order=ColumnMajor) 
     {
         assert(bounces.size() > 0);
 
@@ -144,12 +144,19 @@ private:
     }
 
 public:
-    static void read_NLOS_dataset(NLOSDataset& dataset, std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false)
+    static void read_NLOS_dataset(NLOSDataset& dataset, 
+                                  std::string file_path, 
+                                  const std::vector<uint32_t>& bounces, 
+                                  bool sum_bounces=false,
+                                  DataOrder data_order=DataOrder::DataOrderNone)
     {
-        dataset = read_NLOS_dataset(file_path, bounces, sum_bounces);
+        dataset = read_NLOS_dataset(file_path, bounces, sum_bounces, data_order);
     }
 
-    static NLOSDataset read_NLOS_dataset(std::string file_path, const std::vector<uint32_t>& bounces, bool sum_bounces=false)
+    static NLOSDataset read_NLOS_dataset(std::string file_path, 
+                                         const std::vector<uint32_t>& bounces,
+                                         bool sum_bounces=false,
+                                         DataOrder data_order=DataOrder::DataOrderNone)
     {
         NLOSDataset dataset;
         H5::H5File file(file_path, H5F_ACC_RDONLY);
@@ -193,6 +200,22 @@ public:
         dataset.bins = load_field_array<int>(file.openDataSet(DS_T));
         dataset.deltat = load_field_array<float>(file.openDataSet(DS_DELTA_T));
         dataset.capture = load_field_array<int>(file.openDataSet(DS_IS_CONFOCAL))[0] ? CaptureStrategy::Confocal : CaptureStrategy::Exhaustive;
+        
+        if (data_order != DataOrderNone && dataset.data_order != data_order)
+        {
+            dataset.data = xt::transpose(dataset.data);
+            dataset.camera_grid_positions = xt::transpose(dataset.camera_grid_positions);
+            dataset.camera_grid_normals = xt::transpose(dataset.camera_grid_normals);
+            dataset.laser_grid_positions = xt::transpose(dataset.laser_grid_positions);
+            dataset.laser_grid_normals = xt::transpose(dataset.laser_grid_normals);
+            dataset.data_order = DataOrder::ColumnMajor;
+        }
+        #define printxtarr(x) for (auto i : x.shape()) std::cout << i << ' '; std::cout << std::endl;
+        printxtarr(dataset.data);
+        printxtarr(dataset.camera_grid_positions);
+        printxtarr(dataset.camera_grid_normals);
+        printxtarr(dataset.laser_grid_positions);
+        printxtarr(dataset.laser_grid_normals);
         return std::move(dataset);
     }
 };

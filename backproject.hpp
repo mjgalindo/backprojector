@@ -812,8 +812,6 @@ xt::xarray<float> backproject(
             break;
     }
 
-    
-
     return voxel_volume;
 }
 

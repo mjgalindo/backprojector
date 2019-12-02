@@ -112,7 +112,8 @@ int main(int argc, const char *argv[])
     for (int i = 3; i <= highest_bounce; i++)
         bounces.push_back(i);
 
-    NLOSDataset data = DatasetLoader::read_NLOS_dataset(filename, bounces, true);
+    // Read dataset forcing data to be in rowMajor order
+    NLOSDataset data = DatasetLoader::read_NLOS_dataset(filename, bounces, true, DataOrder::RowMajor);
 
     float deltaT = data.deltat[0];
     float t0 = data.t0[0];
@@ -132,24 +133,11 @@ int main(int argc, const char *argv[])
     xt::xarray<float> transient_data;
 
     // Squeeze channel and bounce dimensions
-    if (data.data_order == RowMajor)
-    {
-        if (data.capture == Confocal)
-            transient_data = xt::view(data.data, xt::all(), xt::all(), 0, xt::all(), 0);
-        else
-            transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0, xt::all(), 0);
-    }
+    if (data.capture == Confocal)
+        transient_data = xt::view(data.data, xt::all(), xt::all(), 0, xt::all(), 0);
     else
-    {
-        transient_data = xt::view(data.data, 0, xt::all(), 0, xt::all());
-    }
+        transient_data = xt::view(data.data, xt::all(), xt::all(), xt::all(), xt::all(), 0, xt::all(), 0);
 
-    if (data.data_order == ColumnMajor) 
-    {
-        std::cerr << "Can't deal with column-major datasets now\n";
-        exit(1);
-    }
-    
     xt::xarray<float> volume;
 
     auto compute = use_cpu ? Compute::CPU : Compute::GPU;
