@@ -152,9 +152,10 @@ void cuda_backprojection_impl(FT *transient_data,
 			uint32_t pair_index = i * blockDim.x + threadIdx.x;
 			float total_distance;
 			compute_distance(voxel_position, &scanned_pairs[pair_index], &total_distance);
-			int32_t min_time_index = max(   0, (int32_t) round((total_distance - *t0 - *voxel_footprint / 2) / *deltaT));
-			int32_t max_time_index = min(*T-1, (int32_t) round((total_distance - *t0 + *voxel_footprint / 2) / *deltaT)) + 1;
-			//if (threadIdx.x == 0 && min_time_index == 0 || max_time_index == *T) printf("%.5f %.5f %d %d\n", total_distance, *t0, min_time_index, max_time_index);
+			float min_distance = round((total_distance - *t0 - *voxel_footprint / 2) / *deltaT);
+			float max_distance = round((total_distance - *t0 + *voxel_footprint / 2) / *deltaT);
+			int32_t min_time_index = max((int32_t)    0, (int32_t) min_distance);
+			int32_t max_time_index = min((int32_t) *T-1, (int32_t) max_distance) + 1;
 			for (int32_t sample_index = min_time_index; sample_index < max_time_index; sample_index++)
 			{
 				radiance_sum = cu_add(radiance_sum, transient_data[pair_index * *T + sample_index]);
