@@ -8,24 +8,28 @@ enum Compute
 {
     CPU, 
     GPU,
+    ComputeNone,
 };
 
 enum VolumeAccess
 {
     Naive,
     Octree,
+    VolumeAccessNone,
 };
 
 enum DataOrder
 {
     ColumnMajor,
     RowMajor,
+    DataOrderNone,
 };
 
 enum CaptureStrategy
 {
     Exhaustive,
     Confocal,
+    CaptureStrategyNone,
 };
 
 }; // namespace nlos
