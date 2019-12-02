@@ -8,9 +8,9 @@
 
 namespace nlos
 {
-
-class DatasetLoader;
-
+/**
+ * @brief Represents an NLOS dataset and metadata
+ */
 class NLOSDataset
 {
 public:
@@ -45,7 +45,6 @@ public:
 
     DataOrder data_order = DataOrder::ColumnMajor;
     std::string engine = "default";
-
 };
 }
 #endif // NLOS_DATASET_HPP

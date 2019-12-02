@@ -345,15 +345,23 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
  * being computed for all laser points (raw-major order with [laser_x, laser_y, cam_x, cam_y])
  * 
  * @param laser_position XYZ position of the laser
- * @param laser_grid_positions
+ * @param laser_grid_positions XYZ positions of all the lasers. Size -> [lx, ly, 3]
+ * @param laser_grid_points XY dimensions of the laser grid ([lx, ly]). Size -> 2
+ * @param camera_position XYZ position of the camera
+ * @param camera_grid_positions XYZ positions of all the cameras. Size -> [lx, ly, 3]
+ * @param camera_grid_points XY dimensions of the camera grid ([lx, ly]). Size -> 2
+ * @param capture strategy used to capture the points. In a confocal setup, laser and 
+ * camera grid positions are equal
+ * @return vector of all the combinations of camera and laser points (for the capture strategy)
+ * and the distance form the wall to them.
  */ 
 std::vector<CameraLaserPair> precompute_distances(const xt::xarray<float>& laser_position,
-                                                const xt::xarray<float>& laser_grid_positions,
-                                                const xt::xarray<uint32_t>& laser_grid_points,
-                                                const xt::xarray<float>& camera_position,
-                                                const xt::xarray<float>& camera_grid_positions,
-                                                const xt::xarray<uint32_t>& camera_grid_points,
-                                                CaptureStrategy capture)
+                                                  const xt::xarray<float>& laser_grid_positions,
+                                                  const xt::xarray<uint32_t>& laser_grid_points,
+                                                  const xt::xarray<float>& camera_position,
+                                                  const xt::xarray<float>& camera_grid_positions,
+                                                  const xt::xarray<uint32_t>& camera_grid_points,
+                                                  CaptureStrategy capture)
 {
     uint32_t number_of_pairs = capture == CaptureStrategy::Confocal ? 
         camera_grid_points[0] * camera_grid_points[1] : 
@@ -411,6 +419,16 @@ std::vector<CameraLaserPair> precompute_distances(const xt::xarray<float>& laser
     return std::move(point_pairs);
 }
 
+/**
+ * @brief Creates the complex phasor field signal from an input transient volume.
+ * 
+ * 
+ * @param transient_data_in transient dataset that will be convolved to have a real and complex part
+ * @param wavelength
+ * @param deltaT
+ * @param times
+ * @return Complex phasor field data
+ */ 
 xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_data_in,
                                              float wavelength, float deltaT, uint32_t times=4)
 {
@@ -462,6 +480,15 @@ xt::xarray<std::complex<float>> phasor_pulse(const xt::xarray<float> &transient_
     return transient_data;
 }
 
+
+/**
+ * @brief Get the corner object
+ * 
+ * @tparam T 
+ * @param volume 
+ * @param mask 
+ * @return xt::xarray<T> 
+ */
 template <typename T>
 xt::xarray<T> get_corner(xt::xarray<T> volume, uint32_t mask)
 {
@@ -477,6 +504,15 @@ xt::xarray<T> get_corner(xt::xarray<T> volume, uint32_t mask)
     return xt::strided_view(volume, sv);
 }
 
+/**
+ * @brief Get the corner object
+ * 
+ * @tparam T 
+ * @param v_position 
+ * @param v_size 
+ * @param mask 
+ * @return xt::xarray<T> 
+ */
 template <typename T>
 xt::xarray<T> get_corner(xt::xarray<T> v_position, xt::xarray<T> v_size, uint32_t mask)
 {
@@ -490,6 +526,13 @@ xt::xarray<T> get_corner(xt::xarray<T> v_position, xt::xarray<T> v_size, uint32_
     return (v_position - v_size / 2) + tmp_multiplier * v_size;
 }
 
+/**
+ * @brief Get the nd corners object
+ * 
+ * @tparam T 
+ * @param ndim_volume 
+ * @return xt::xarray<T> 
+ */
 template <typename T>
 xt::xarray<T> get_nd_corners(xt::xarray<T> ndim_volume)
 {
@@ -505,6 +548,14 @@ xt::xarray<T> get_nd_corners(xt::xarray<T> ndim_volume)
     return corners;
 }
 
+/**
+ * @brief Get the nd corners object
+ * 
+ * @tparam T 
+ * @param v_position 
+ * @param v_size 
+ * @return xt::xarray<T> 
+ */
 template <typename T>
 xt::xarray<T> get_nd_corners(xt::xarray<T> v_position, xt::xarray<T> v_size)
 {
@@ -519,6 +570,14 @@ xt::xarray<T> get_nd_corners(xt::xarray<T> v_position, xt::xarray<T> v_size)
     return corners;
 }
 
+/**
+ * @brief Get the min max distances object
+ * 
+ * @tparam T 
+ * @param set_a 
+ * @param set_b 
+ * @return std::tuple<T, T> 
+ */
 template <typename T>
 std::tuple<T, T> get_min_max_distances(xt::xarray<T> set_a, xt::xarray<T> set_b)
 {
@@ -540,6 +599,23 @@ std::tuple<T, T> get_min_max_distances(xt::xarray<T> set_a, xt::xarray<T> set_b)
     return std::make_tuple(min_dist, max_dist);
 }
 
+/**
+ * @brief Get the time limits object
+ * 
+ * @param laser_position 
+ * @param laser_grid_positions 
+ * @param laser_grid_points 
+ * @param camera_position 
+ * @param camera_grid_positions 
+ * @param camera_grid_points 
+ * @param volume_size 
+ * @param volume_position 
+ * @param t0 
+ * @param T 
+ * @param deltaT 
+ * @param data_order 
+ * @return std::tuple<float, float> 
+ */
 std::tuple<float, float> get_time_limits(const xt::xarray<float>& laser_position,
                                          const xt::xarray<float>& laser_grid_positions,
                                          const xt::xarray<uint32_t>& laser_grid_points,
@@ -599,6 +675,19 @@ std::tuple<float, float> get_time_limits(const xt::xarray<float>& laser_position
     return std::make_tuple(min_T_index-100, max_T_index+100);
 }
 
+/**
+ * @brief Get the transient chunk object
+ * 
+ * @tparam AT 
+ * @param transient_data 
+ * @param laser_grid_points 
+ * @param camera_grid_points 
+ * @param min_T_index 
+ * @param max_T_index 
+ * @param capture 
+ * @param data_order 
+ * @return xt::xarray<AT> 
+ */
 template <typename AT>
 xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
                                    const xt::xarray<uint32_t>& laser_grid_points,
@@ -663,6 +752,26 @@ xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
     return std::move(transient_chunk);
 }
 
+/**
+ * @brief 
+ * 
+ * @param transient_data 
+ * @param camera_grid_positions 
+ * @param laser_grid_positions 
+ * @param camera_position 
+ * @param laser_position 
+ * @param t0 
+ * @param deltaT 
+ * @param capture 
+ * @param volume_position 
+ * @param volume_size 
+ * @param voxels_per_side 
+ * @param compute 
+ * @param data_order 
+ * @param vol_access 
+ * @param wall_normal 
+ * @return xt::xarray<float> 
+ */
 xt::xarray<float> backproject(
     const xt::xarray<float> &transient_data,
     const xt::xarray<float> &camera_grid_positions,
@@ -815,6 +924,27 @@ xt::xarray<float> backproject(
     return voxel_volume;
 }
 
+/**
+ * @brief 
+ * 
+ * @param transient_data 
+ * @param camera_grid_positions 
+ * @param laser_grid_positions 
+ * @param camera_position 
+ * @param laser_position 
+ * @param t0 
+ * @param deltaT 
+ * @param capture 
+ * @param volume_position 
+ * @param volume_size 
+ * @param voxels_per_side 
+ * @param wavelength 
+ * @param compute 
+ * @param vol_access 
+ * @param data_order 
+ * @param wall_normal 
+ * @return xt::xarray<std::complex<float>> 
+ */
 xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &transient_data,
                                                       const xt::xarray<float> &camera_grid_positions,
                                                       const xt::xarray<float> &laser_grid_positions,

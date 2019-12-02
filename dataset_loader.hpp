@@ -144,6 +144,15 @@ private:
     }
 
 public:
+    /**
+     * @brief 
+     * 
+     * @param dataset 
+     * @param file_path 
+     * @param bounces 
+     * @param sum_bounces 
+     * @param data_order 
+     */
     static void read_NLOS_dataset(NLOSDataset& dataset, 
                                   std::string file_path, 
                                   const std::vector<uint32_t>& bounces, 
@@ -153,6 +162,15 @@ public:
         dataset = read_NLOS_dataset(file_path, bounces, sum_bounces, data_order);
     }
 
+    /**
+     * @brief 
+     * 
+     * @param file_path 
+     * @param bounces 
+     * @param sum_bounces 
+     * @param data_order 
+     * @return NLOSDataset 
+     */
     static NLOSDataset read_NLOS_dataset(std::string file_path, 
                                          const std::vector<uint32_t>& bounces,
                                          bool sum_bounces=false,
