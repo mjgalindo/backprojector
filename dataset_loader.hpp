@@ -226,14 +226,8 @@ public:
             dataset.camera_grid_normals = xt::transpose(dataset.camera_grid_normals);
             dataset.laser_grid_positions = xt::transpose(dataset.laser_grid_positions);
             dataset.laser_grid_normals = xt::transpose(dataset.laser_grid_normals);
-            dataset.data_order = DataOrder::ColumnMajor;
+            dataset.data_order = data_order;
         }
-        #define printxtarr(x) for (auto i : x.shape()) std::cout << i << ' '; std::cout << std::endl;
-        printxtarr(dataset.data);
-        printxtarr(dataset.camera_grid_positions);
-        printxtarr(dataset.camera_grid_normals);
-        printxtarr(dataset.laser_grid_positions);
-        printxtarr(dataset.laser_grid_normals);
         return std::move(dataset);
     }
 };

@@ -3,6 +3,7 @@
 #include "dataset_loader.hpp"
 #include "nlos_dataset.hpp"
 #include "args.hxx"
+#include <fstream>
 
 using namespace nlos;
 
@@ -123,6 +124,7 @@ int main(int argc, const char *argv[])
     if (xt::any(xt::isnan(volume_size)))
         volume_size = data.hidden_volume_size;
 
+    // If the resolution is the same in all dimensions we adjust it to the size. This won't allow for reconstructions with irregular voxels
     if (voxel_resolution[0] == voxel_resolution[1] && voxel_resolution[1] == voxel_resolution[2])
     {
         voxel_resolution = voxel_resolution * volume_size / xt::amax(volume_size)[0];
@@ -131,7 +133,7 @@ int main(int argc, const char *argv[])
     // if it is not row major: transient_data.shape() -> (channel, T, cy, cx, ly, lx)
     // if it is row major: transient_data.shape() -> (lx, ly, cx, cy, T, channel)
     xt::xarray<float> transient_data;
-
+    
     // Squeeze channel and bounce dimensions
     if (data.capture == Confocal)
         transient_data = xt::view(data.data, xt::all(), xt::all(), 0, xt::all(), 0);
@@ -165,17 +167,17 @@ int main(int argc, const char *argv[])
     else
     {
         volume = bp::backproject(transient_data,
-                                    data.camera_grid_positions,
-                                    data.laser_grid_positions,
-                                    data.camera_position,
-                                    data.laser_position,
-                                    t0, deltaT, data.capture,
-                                    volume_position,
-                                    volume_size,
-                                    voxel_resolution,
-                                    compute,
-                                    data.data_order,
-                                    vol_access);
+                                 data.camera_grid_positions,
+                                 data.laser_grid_positions,
+                                 data.camera_position,
+                                 data.laser_position,
+                                 t0, deltaT, data.capture,
+                                 volume_position,
+                                 volume_size,
+                                 voxel_resolution,
+                                 compute,
+                                 data.data_order,
+                                 vol_access);
     }
     
     if (outfile.size() == 0)

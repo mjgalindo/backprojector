@@ -721,32 +721,21 @@ xt::xarray<AT> get_transient_chunk(const xt::xarray<AT>& transient_data,
         }
         else if (data_order == ColumnMajor)
         {
-            #pragma omp parallel for collapse(2)
-            for (int32_t lx = 0; lx < laser_grid_points[0]; lx++)
-                for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
-                {
-                    xt::view(transient_chunk, lx, ly, xt::all()) = xt::view(transient_data, xt::range(orig_time_from, orig_time_to), ly, lx);
-                }
+            xt::view(transient_chunk, xt::all(), xt::all(), xt::range(chunk_time_from, chunk_time_to)) = 
+                xt::view(xt::transpose(transient_data), xt::all(), xt::all(), xt::range(orig_time_from, orig_time_to));
         }
     }
     else if (capture == Exhaustive)
     {
         if (data_order == RowMajor)
         {
-            printf("\n%d %d %d %d \n", orig_time_from, orig_time_to, chunk_time_from, chunk_time_to); 
             xt::view(transient_chunk, xt::all(), xt::all(), xt::all(), xt::all(), xt::range(chunk_time_from, chunk_time_to)) =
                 xt::view(transient_data, xt::all(), xt::all(), xt::all(), xt::all(), xt::range(orig_time_from, orig_time_to));
         }
         else if (data_order == ColumnMajor)
         {
-            #pragma omp parallel for collapse(4)
-            for (uint32_t lx = 0; lx < laser_grid_points[0]; lx++)
-                for (uint32_t ly = 0; ly < laser_grid_points[1]; ly++)
-                    for (uint32_t cx = 0; cx < camera_grid_points[0]; cx++)
-                        for (uint32_t cy = 0; cy < camera_grid_points[1]; cy++)
-                        {
-                            xt::view(transient_chunk, lx, ly, cx, cy, xt::range(chunk_time_from, chunk_time_to)) = xt::view(transient_data, xt::range(orig_time_from, orig_time_to), cy, cx, ly, lx);
-                        }
+            xt::view(transient_chunk, xt::all(), xt::all(), xt::all(), xt::all(), xt::range(chunk_time_from, chunk_time_to)) = 
+                xt::view(xt::transpose(transient_data), xt::all(), xt::all(), xt::all(), xt::all(), xt::range(orig_time_from, orig_time_to));
         }
     }
     return std::move(transient_chunk);
