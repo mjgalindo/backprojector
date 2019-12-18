@@ -781,8 +781,8 @@ xt::xarray<float> backproject(
     auto tdata_shape = transient_data.shape();
     uint32_t T = tdata_shape[data_order == RowMajor ? tdata_shape.size() - 1 : 0];
 
-    xt::xarray<uint32_t> camera_grid_points({2});
-    xt::xarray<uint32_t> laser_grid_points({2});
+    xt::xarray<uint32_t> camera_grid_points = xt::zeros<uint32_t>({2});
+    xt::xarray<uint32_t> laser_grid_points = xt::zeros<uint32_t>({2});
 
     {
         // camera_grid_positions.shape() is (points_x, points_y, 3)
