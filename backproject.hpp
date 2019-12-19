@@ -951,8 +951,8 @@ xt::xarray<std::complex<float>> phasor_reconstruction(const xt::xarray<float> &t
 {
     xt::xarray<float> voxel_size = volume_size / (voxels_per_side - 1);
 
-    xt::xarray<uint32_t> camera_grid_points({2});
-    xt::xarray<uint32_t> laser_grid_points({2});
+    xt::xarray<uint32_t> camera_grid_points = xt::zeros<uint32_t>({2});
+    xt::xarray<uint32_t> laser_grid_points = xt::zeros<uint32_t>({2});
     {
         auto t = camera_grid_positions.shape();
         camera_grid_points[0] = t[0];
