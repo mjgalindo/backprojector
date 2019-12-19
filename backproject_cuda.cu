@@ -328,7 +328,7 @@ void cuda_octree_backprojection_impl(float const *transient_data,
 			int32_t min_time_index = max(0, (int32_t) round((total_distance - *t0 - voxel_diagonal / 2) / *deltaT));
 			int32_t max_time_index = min(*T, (int32_t) round((total_distance - *t0 + voxel_diagonal / 2) / *deltaT)) + 1;
 			if (P && threadIdx.x == 0 && i == 0)
-				printf("Min time: %d Max time: %d total_dist %.3f XYZ %d %d %d POS %.4f, %.4f, %.4f t0 %.4f voxel_diag %.9f voxinc %.5f T %d\n",
+				printf("Min time: %d Max time: %d total_dist %.3f XYZ %d %d %d t0 %.4f voxel_diag %.9f voxinc %.5f T %d\n",
 					min_time_index, max_time_index, total_distance, xyz[0], xyz[1], xyz[2], *t0, voxel_diagonal, voxel_inc[i], *T);
 			if (threadIdx.x == 0 && min_time_index >= max_time_index)
 				printf("XYZ %d %d %d POS %.3f, %.3f, %.3f Min time: %d Max time: %d total_dist %.3f t0 %.4f voxel_diag %.9f voxinc %.5f T %d\n",
@@ -678,7 +678,6 @@ void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk
 											float t0,
 											float deltaT)
 {
-	std::cout << transient_size << ' ' << T << ' ' << scanned_pairs.size() << ' ' << t0 << ' ' << deltaT << std::endl;
 	thrust::device_vector<cuComplex> transient_chunk_gpu((cuComplex*) transient_chunk, (cuComplex*) transient_chunk + transient_size);
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
 	uint32_t num_pairs = scanned_pairs.size();
