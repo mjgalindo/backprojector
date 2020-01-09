@@ -182,13 +182,13 @@ public:
         {
             H5::Attribute att(file.openAttribute("data order"));
             H5::StrType stype = att.getStrType();
-            std::string engine;
-            att.read(stype, engine);
-            if (engine.compare("row-major") == 0)
+            std::string data_order_string;
+            att.read(stype, data_order_string);
+            if (data_order_string.compare("row-major") == 0)
             {
                 dataset.data_order = RowMajor;
             }
-            else if (engine.compare("column-major") == 0)
+            else if (data_order_string.compare("column-major") == 0)
             {
                 dataset.data_order = ColumnMajor;
             }
@@ -221,6 +221,7 @@ public:
         
         if (data_order != DataOrderNone && dataset.data_order != data_order)
         {
+            std::cout << "Transposing data\n";
             dataset.data = xt::transpose(dataset.data);
             dataset.camera_grid_positions = xt::transpose(dataset.camera_grid_positions);
             dataset.camera_grid_normals = xt::transpose(dataset.camera_grid_normals);
