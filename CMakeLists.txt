@@ -14,12 +14,22 @@ add_library(cudabp SHARED backproject_cuda.cu)
 add_library(cudabp_static STATIC backproject_cuda.cu)
 
 set_target_properties(cudabp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-target_include_directories(cudabp PRIVATE /opt/cuda/samples/common/inc/)
-target_include_directories(cudabp_static PRIVATE /opt/cuda/samples/common/inc/)
+
 target_compile_features(cudabp PUBLIC cxx_std_14)
 target_compile_features(cudabp_static PUBLIC cxx_std_14)
-target_compile_options(cudabp PRIVATE $<$<CONFIG:Debug>:-G> -gencode arch=compute_${CUDA_COMPUTE_CAPABILITY},code=sm_${CUDA_COMPUTE_CAPABILITY})
-target_compile_options(cudabp_static PRIVATE $<$<CONFIG:Debug>:-G> -gencode arch=compute_${CUDA_COMPUTE_CAPABILITY},code=sm_${CUDA_COMPUTE_CAPABILITY})
+
+# Compilation flags for most relevant cuda arquitectures up to turing (RTX)
+set(CUDA_FLAGS $<$<CONFIG:Debug>:-G> -arch=sm_50 
+        -gencode=arch=compute_50,code=sm_50 
+        -gencode=arch=compute_52,code=sm_52 
+        -gencode=arch=compute_60,code=sm_60 
+        -gencode=arch=compute_61,code=sm_61 
+        -gencode=arch=compute_70,code=sm_70 
+        -gencode=arch=compute_75,code=sm_75 
+        -gencode=arch=compute_75,code=compute_75)
+
+target_compile_options(cudabp PRIVATE ${CUDA_FLAGS})
+target_compile_options(cudabp_static PRIVATE ${CUDA_FLAGS})
 target_include_directories(cudabp PRIVATE)
 target_include_directories(cudabp_static PRIVATE)
 
@@ -36,15 +46,16 @@ endif(WIN32)
 
 find_package(NumPy)
 if (NUMPY_FOUND)
-    message("Python bindings will be built")
+    message("-- Python bindings will be built")
     add_subdirectory(pybind11)
     pybind11_add_module(nlosbpy nlosbpy.cpp)
     target_compile_features(nlosbpy PUBLIC cxx_std_14)
-    target_include_directories(nlosbpy PRIVATE ${HDF5_INCLUDE_DIRS} ${NUMPY_INCLUDE_DIRS} xtl/include xtensor/include xtensor-blas/include xtensor-python/include)
+    target_include_directories(nlosbpy PRIVATE ${HDF5_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS} ${NUMPY_INCLUDE_DIRS} xtl/include xtensor/include xtensor-blas/include xtensor-python/include)
     target_link_libraries(nlosbpy PRIVATE ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX cudabp)
-    install(TARGETS nlosbpy DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+    find_package (Python COMPONENTS Interpreter Development OPTIONAL)
+    install(TARGETS nlosbpy DESTINATION ${Python_SITELIB})
 endif(NUMPY_FOUND)
 
 install(TARGETS backprojector DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-install(TARGETS cudabp DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS cudabp cudabp_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(FILES backproject.hpp backproject_cuda.hpp DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
