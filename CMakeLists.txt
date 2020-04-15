@@ -30,13 +30,12 @@ set(CUDA_FLAGS $<$<CONFIG:Debug>:-G> -arch=sm_50
 
 target_compile_options(cudabp PRIVATE ${CUDA_FLAGS})
 target_compile_options(cudabp_static PRIVATE ${CUDA_FLAGS})
-target_include_directories(cudabp PRIVATE)
-target_include_directories(cudabp_static PRIVATE)
 
 find_package(OpenMP REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 target_include_directories(backprojector PRIVATE ${HDF5_INCLUDE_DIRS} ${XTL_INCLUDES})
 if (WIN32)
+    # Visual studio doesn't like linking the HDF5 library. This has helped at some point.
     STRING(REGEX REPLACE "(.+)/.+.lib;.+" "\\1" HDF5_LIBRARY_DIR "${HDF5_LIBRARIES}")
     target_link_libraries(backprojector PRIVATE OpenMP::OpenMP_CXX cudabp_static 
         "${HDF5_LIBRARY_DIR}/libhdf5.lib;${HDF5_LIBRARY_DIR}/libhdf5_cpp.lib;${HDF5_LIBRARY_DIR}/libzlib.lib;${HDF5_LIBRARY_DIR}/libszip.lib")
