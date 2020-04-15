@@ -22,7 +22,7 @@ Clone the repository with:
 
 ```git clone --recursive https://github.com/mjgalindo/backprojector```
 
-to get most dependencies, or use:
+to get **most** dependencies, or use:
 
 ```git submodule update --init``` 
 
@@ -32,9 +32,15 @@ if you cloned it normally.
 
 You will need to install CUDA, the HDF5 library and headers, python and numpy. 
 
-On ubuntu:
+Ubuntu:
 
 ```apt install hdf5-tools libhdf5-serial-dev libpython-all-dev python-numpy```
+
+And install cuda manually from the nvidia website.
+
+Arch:
+
+```pacman -S hdf5 base-devel cuda```
 
 You should be able to find equivalent packages in the repositories for your system or on the corresponding websites on windows (note that while this project has been successfully compiled for windows, we don't work directly on that platform so instability is to be expected).
 
@@ -51,6 +57,11 @@ sudo make install
 
 replacing XX with the previous value.
 
+By default it will compile for many relevant architectures, so you may not need to specify this.
+
+At the time of writing, cuda 10.2 is the most recent version which will not work correctly with gcc-9.
+In that case, you can solve this issue using the cmake flag `-DCMAKE_CXX_COMPILER=g++-8`.
+
 # Usage
 
 The ```backprojector``` binary takes a file from [our dataset](graphics.unizar.es/nlos) and backprojects the default hidden region. You can have a look at the options with the ```-h``` argument, allowing you to choose what to reconstruct.
@@ -66,6 +77,15 @@ Running ```./backprojector serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82
 v = h5read('serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00]_recon.hdf5', 'voxelVolume');
 volumeViewer(v);
 ```
+
+You can have a look at acceptable flags running
+
+```backprojector -h```
+
+## Phasor fields reconstruction
+
+The option `--phasor=1` (1 enables, 0 disables, same for the --cpu option) enables phasor field reconstruction using complex numbers directly, therefore avoiding doing separate backprojections for the imaginary and real components.
+
 
 # Performance
 
