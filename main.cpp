@@ -147,17 +147,18 @@ int main(int argc, const char *argv[])
 
     if (use_phasor_fields)
     {
-        xt::xarray<std::complex<float>> complex_volume = bp::phasor_reconstruction(transient_data,
-                                                        data.camera_grid_positions,
-                                                        data.laser_grid_positions,
-                                                        data.camera_position,
-                                                        data.laser_position,
-                                                        t0, deltaT, data.capture,
-                                                        volume_position,
-                                                        volume_size,
-                                                        voxel_resolution,
-                                                        wavelength,
-                                                        compute, vol_access);
+        xt::xarray<std::complex<float>> complex_volume = 
+            bp::phasor_reconstruction(transient_data,
+                                      data.camera_grid_positions,
+                                      data.laser_grid_positions,
+                                      data.camera_position,
+                                      data.laser_position,
+                                      t0, deltaT, data.capture,
+                                      volume_position,
+                                      volume_size,
+                                      voxel_resolution,
+                                      wavelength,
+                                      compute, vol_access);
         volume.resize(complex_volume.shape());
         for (int i = 0; i < std::accumulate(volume.shape().begin(), volume.shape().end(), 1, std::multiplies<int>()); i++)
         {

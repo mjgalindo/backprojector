@@ -80,7 +80,7 @@ AT accumulate_radiance(const xt::xarray<AT>& transient_data,
                        float t0, float deltaT, uint32_t T, float access_width)
 {
     AT radiance_sum = AT{};
-    for (int pairId = 0; pairId < point_pairs.size(); pairId++)
+    for (uint32_t pairId = 0; pairId < point_pairs.size(); pairId++)
     {
         const auto& pair = point_pairs[pairId];
         const float wall_voxel_wall_distance = distance(pair.laser_point, voxel_position) +
@@ -146,8 +146,7 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
     auto max_voxels = volume.max_voxels(depth);
     xt::xarray<float> voxel_size = volume.voxel_size_at(depth);
     float voxel_diagonal = xt::sqrt(xt::sum(voxel_size * voxel_size))[0];
-    int iters = 0;
-    
+
     #if __linux__
     tqdm bar;
     bar.set_theme_braille();
@@ -165,7 +164,7 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
         // Prepare the parallel range for each thread
         uint32_t threadId = omp_get_thread_num();
         uint32_t nthreads = omp_get_num_threads();
-        iter3D iter(max_voxels);
+        Iter3D iter(max_voxels);
         int total_length = iter.total_length();
         float thread_iterations = total_length / (float) nthreads;
         uint32_t from = std::floor(threadId * thread_iterations);
@@ -175,7 +174,7 @@ void classic_backprojection(const xt::xarray<AT>& transient_data,
         if (threadId == nthreads - 1) to = iter.total_length();
         int local_avoided = 0;
         iter.jump_to(from);
-        for (int id = from; id < to; ++id)
+        for (uint32_t id = from; id < to; ++id)
         {
             // Skip voxels below the given threshold
             if (depth <= 0 || within_threshold(volume(iter, volume.max_depth()-1, OctreeVolumeF<AT>::BuffType::Buffer), threshold)) 
@@ -269,7 +268,7 @@ void octree_backprojection(const xt::xarray<AT>& transient_data,
                            OctreeVolumeF<AT>& volume,
                            float t0, float deltaT, uint32_t T, bool verbose=true)
 {
-    int depth = 3;
+    uint32_t depth = 3;
     AT threshold = -1.0f;
     volume.reset_buffer();
     while (depth <= volume.max_depth())
@@ -496,7 +495,7 @@ xt::xarray<T> get_corner(xt::xarray<T> volume, uint32_t mask)
     const int ndim = shape.size()-1;
 
     xt::xstrided_slice_vector sv(ndim);
-    for (int i = 0; i < sv.size(); i++)
+    for (uint32_t i = 0; i < sv.size(); i++)
     {
         sv[i] = (mask & 1 << (ndim - 1 - i)) ? shape[i]-1 : 0;
     }
@@ -587,9 +586,9 @@ std::tuple<T, T> get_min_max_distances(xt::xarray<T> set_a, xt::xarray<T> set_b)
     float min_dist = std::numeric_limits<float>::max();
     float max_dist = 0.0f;
 
-    for (int i = 0; i < shape_a[0]; i++)
+    for (uint32_t i = 0; i < shape_a[0]; i++)
     {
-        for (int j = 0; j < shape_b[0]; j++)
+        for (uint32_t j = 0; j < shape_b[0]; j++)
         {
             float dist = distance(xt::view(set_a, i, xt::all()), xt::view(set_b, j, xt::all()));
             min_dist = std::min({dist, min_dist});
@@ -795,9 +794,6 @@ xt::xarray<float> backproject(
         laser_grid_points[0] = t[data_order == RowMajor ? 0 : 2];
         laser_grid_points[1] = t[data_order == RowMajor ? 1 : 1];
     }
-
-    const uint32_t num_laser_points = laser_grid_points[0] * laser_grid_points[1];
-    const uint32_t num_camera_points = camera_grid_points[0] * camera_grid_points[1];
 
     // Get the minimum and maximum distance traveled to transfer as little memory to the GPU as possible
     float min_T_index, max_T_index;

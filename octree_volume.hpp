@@ -9,6 +9,11 @@
 
 #include "iter3D.hpp"
 
+/**
+ * Represents a 3D grid volume.
+ * It can optionally contain a double buffer that
+ * can be accessed at different depths as if it were an octree.
+ */ 
 template <typename DT, typename FT>
 class OctreeVolume
 {
@@ -117,12 +122,12 @@ public:
         return (*this)((*this).at_depth(xyz, depth), buff);
     }
 
-    DT& operator()(const iter3D& iter, BuffType buff = BuffType::Main)
+    DT& operator()(const Iter3D& iter, BuffType buff = BuffType::Main)
     {   
         return (*this)(iter.x(), iter.y(), iter.z(), buff);
     }
 
-    DT& operator()(const iter3D& iter, int depth, BuffType buff = BuffType::Main)
+    DT& operator()(const Iter3D& iter, int depth, BuffType buff = BuffType::Main)
     {
         return (*this)((*this).at_depth(xt::xarray<size_t>{iter.x(), iter.y(), iter.z()}, depth), buff);
     }
@@ -139,7 +144,7 @@ public:
         return (*this)((*this).at_+depth(xt::xarray<UT>({x,y,z}), depth, buff));
     }
 
-    xt::xarray<FT> position_at(const iter3D& iter) const
+    xt::xarray<FT> position_at(const Iter3D& iter) const
     {
         static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
         return std::move(zero_pos + xt::xarray<FT>{iter.x() * m_voxel_size[0], 
@@ -152,7 +157,7 @@ public:
         return m_volume_size / max_voxels(depth);
     }
 
-    xt::xarray<FT> position_at(const iter3D& iter, int depth) const
+    xt::xarray<FT> position_at(const Iter3D& iter, int depth) const
     {
         static xt::xarray<FT> zero_pos = m_volume_position - m_volume_size / 2;
         xt::xarray<FT> voxel_size = voxel_size_at(depth);
@@ -163,7 +168,7 @@ public:
 
     xt::xarray<size_t> max_voxels(int depth=-1) const
     {
-        if (depth == max_depth() || depth == -1) return m_max_voxels;
+        if (depth == (int) max_depth() || depth == -1) return m_max_voxels;
         depth = depth < 0 ? max_depth() : depth;
         xt::xarray<size_t> mod = m_max_voxels / (1u << depth);
         return m_max_voxels / mod;
@@ -172,7 +177,7 @@ public:
     template <typename UT>
     inline xt::xarray<UT> at_depth(const xt::xarray<UT>& xyz, int depth) const
     {
-        if (depth == -1 || depth == max_depth()) return xyz;
+        if (depth == -1 || depth == (int) max_depth()) return xyz;
         xt::xarray<UT> mod = m_max_voxels / (1u << depth);
         return xyz / mod;
     }
