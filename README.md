@@ -70,7 +70,7 @@ We also prepared a simple python binding for the backprojection routine, taking 
 
 ## Example
 
-Download a dataset from (the website)[graphics.unizar.es/nlos], (we'll use [this one](https://drive.google.com/uc?export=download&id=1_niEa4nThL00Gi206d4QH2nylRa-Y7st) next).
+Download a dataset from graphics.unizar.es/nlos , (we'll use [this one](https://drive.google.com/uc?export=download&id=1_niEa4nThL00Gi206d4QH2nylRa-Y7st) next).
 Running ```./backprojector serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00].hdf5``` should create a ```serapis_l[0.00,-0.50,-0.41]_r[0.00,0.00,-1.57]_v[0.82]_s[16]_l[16]_gs[1.00]_recon.hdf5``` file which you can easily load and visualize on MATLAB with:
 
 ```
@@ -106,5 +106,12 @@ The following table was measured on an NVIDIA Quadro P5000:
 |128x128| 128x128x128| 5993ms| 0.16fps|
 
 
+# TODO
+
+* Check the correctness of the phasor field functionality.
+* Unifying the code for phasor fields and CPU/GPU backprojection meant some performance penalty. With a good profiling, it should be possible to find the biggest bottlenecks to backprojection.
+* Try octree backprojection. There's a branch specifically working with octree backprojection, where the reconstructions start very small to check regions of interest and reject empty ones. Then the resolution would increase up to a target, ideally taking much less time. 
+* More efficient single point reconstructions. When the laser or the spad are focused on a single point, there's no way to reconstruct more than one point in depth (using polar coordingates instead of a regular grid for reconstruction), as there's no visibility and the first point would block the line of sight of any other points behind it. Therefore, instead of reconstructing a volume, you could theoretically end up with a single 2D depth map, where each pixel has a depth and an intensity.
+* Make this repository public. There's been talks of releasing this repository to the public, letting people use it to quickly compare their reconstructions with a baseline with a relatively simple setup. That would also be an incentive to use data from the dataset.
 
 [1] Recovering three-dimensional shape around a corner using ultrafast time-of-flight imaging, Nature Communications, 2012
