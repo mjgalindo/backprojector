@@ -5,6 +5,7 @@
 #include <H5Cpp.h>
 #include <xtensor/xarray.hpp>
 #include <xtensor/xfunction.hpp>
+#include <xtensor/xadapt.hpp>
 
 #include "nlos_dataset.hpp"
 
