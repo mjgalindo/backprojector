@@ -110,8 +110,9 @@ The following table was measured on an NVIDIA Quadro P5000:
 
 * Check the correctness of the phasor field functionality.
 * Unifying the code for phasor fields and CPU/GPU backprojection meant some performance penalty. With a good profiling, it should be possible to find the biggest bottlenecks to backprojection.
-* Try octree backprojection. There's a branch specifically working with octree backprojection, where the reconstructions start very small to check regions of interest and reject empty ones. Then the resolution would increase up to a target, ideally taking much less time. 
+* Try octree backprojection (and remove print statements). There's a branch specifically working with octree backprojection, where the reconstructions start very small to check regions of interest and reject empty ones. Then the resolution would increase up to a target, ideally taking much less time. 
 * More efficient single point reconstructions. When the laser or the spad are focused on a single point, there's no way to reconstruct more than one point in depth (using polar coordingates instead of a regular grid for reconstruction), as there's no visibility and the first point would block the line of sight of any other points behind it. Therefore, instead of reconstructing a volume, you could theoretically end up with a single 2D depth map, where each pixel has a depth and an intensity.
 * Make this repository public. There's been talks of releasing this repository to the public, letting people use it to quickly compare their reconstructions with a baseline with a relatively simple setup. That would also be an incentive to use data from the dataset.
+* Fix Wall normal argument for backprojection. A wall normal of [0,-1,0] (which is by far the most common in the dataset) constructs a negative z axis, and for some reason this makes reconstructions fail.
 
 [1] Recovering three-dimensional shape around a corner using ultrafast time-of-flight imaging, Nature Communications, 2012
