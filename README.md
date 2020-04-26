@@ -84,7 +84,7 @@ You can have a look at acceptable flags running
 
 ## Phasor fields reconstruction
 
-The option `--phasor=1` (1 enables, 0 disables, same for the --cpu option) enables phasor field reconstruction using complex numbers directly, therefore avoiding doing separate backprojections for the imaginary and real components.
+The `--phasor` flag enables phasor field reconstruction using complex numbers directly, therefore avoiding doing separate backprojections for the imaginary and real components.
 
 
 # Performance

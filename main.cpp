@@ -72,10 +72,10 @@ int main(int argc, const char *argv[])
                                             "Output file for the result.",
                                             {'o', "output"}, "");
 
-    args::ValueFlag<bool> vf_use_cpu(parser, "use_cpu", "Flag to force CPU backprojection", {"cpu"}, false);
-    args::ValueFlag<bool> vf_use_octree(parser, "use_octree", "Flag to force octree backprojection (CPU only for now)", {"octree"}, false);
-    args::ValueFlag<bool> vf_use_phasor(parser, "use_phasor", "Flag to enable phasor field reconstruction (CPU only for now)", {"phasor"}, false);
-    args::ValueFlag<float> vf_wavelength(parser, "wavelength", "Phasor field wavelength (only used with phasor enabled)", {'w', "wl", "wavelength"}, false);
+    args::Flag vf_use_cpu(parser, "use_cpu", "Flag to force CPU backprojection", {"cpu"});
+    args::Flag vf_use_octree(parser, "use_octree", "Flag to force octree backprojection (CPU only for now)", {"octree"});
+    args::Flag vf_use_phasor(parser, "use_phasor", "Flag to enable phasor field reconstruction (CPU only for now)", {"phasor"});
+    args::ValueFlag<float> vf_wavelength(parser, "wavelength", "Phasor field wavelength (only used with phasor enabled)", {'w', "wl", "wavelength"}, 0.005);
 
     try
     {
