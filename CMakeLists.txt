@@ -10,13 +10,10 @@ set(XTL_INCLUDES xtl/include xtensor/include xtensor-blas/include)
 
 add_executable(backprojector main.cpp)
 target_compile_features(backprojector PUBLIC cxx_std_14)
-add_library(cudabp SHARED backproject_cuda.cu)
 add_library(cudabp_static STATIC backproject_cuda.cu)
 
-set_target_properties(cudabp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-target_compile_features(cudabp PUBLIC cxx_std_14)
 target_compile_features(cudabp_static PUBLIC cxx_std_14)
+set_target_properties(cudabp_static PROPERTIES POSITION_INDEPENDENT_CODE TRUE CUDA_SEPARABLE_COMPILATION ON)
 
 # Compilation flags for most relevant cuda arquitectures up to turing (RTX)
 set(CUDA_FLAGS $<$<CONFIG:Debug>:-G> -arch=sm_50 
@@ -28,7 +25,6 @@ set(CUDA_FLAGS $<$<CONFIG:Debug>:-G> -arch=sm_50
         -gencode=arch=compute_75,code=sm_75 
         -gencode=arch=compute_75,code=compute_75)
 
-target_compile_options(cudabp PRIVATE ${CUDA_FLAGS})
 target_compile_options(cudabp_static PRIVATE ${CUDA_FLAGS})
 
 find_package(OpenMP REQUIRED)
@@ -49,11 +45,11 @@ if (Python_NumPy_FOUND)
     add_subdirectory(pybind11)
     pybind11_add_module(nlosbpy nlosbpy.cpp)
     target_compile_features(nlosbpy PUBLIC cxx_std_14)
-    target_include_directories(nlosbpy PRIVATE ${HDF5_INCLUDE_DIRS} ${Python_INCLUDE_DIRS} ${Python_NumPy_INCLUDE_DIRS} xtl/include xtensor/include xtensor-blas/include xtensor-python/include)
-    target_link_libraries(nlosbpy PRIVATE ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX cudabp)
+    target_include_directories(nlosbpy PRIVATE ${HDF5_INCLUDE_DIRS} ${Python_INCLUDE_DIRS} ${Python_NumPy_INCLUDE_DIRS} ${XTL_INCLUDES} xtensor-python/include)
+    target_link_libraries(nlosbpy PRIVATE ${HDF5_LIBRARIES} OpenMP::OpenMP_CXX cudabp_static)
     install(TARGETS nlosbpy DESTINATION ${Python_SITELIB})
 endif(Python_NumPy_FOUND)
 
 install(TARGETS backprojector DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-install(TARGETS cudabp cudabp_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS cudabp_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(FILES backproject.hpp backproject_cuda.hpp DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
