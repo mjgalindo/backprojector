@@ -669,14 +669,14 @@ void call_cuda_octree_backprojection(const float* transient_chunk,
 }
 
 void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk,
-											uint32_t transient_size, uint32_t T,
-											const std::vector<CameraLaserPair> scanned_pairs,
-											std::complex<float>* voxel_volume,
-											const uint32_t* voxels_per_side,
-											const float* volume_zero_pos,
-											const float* voxel_inc,
-											float t0,
-											float deltaT)
+									  uint32_t transient_size, uint32_t T,
+									  const std::vector<CameraLaserPair> scanned_pairs,
+									  std::complex<float>* voxel_volume,
+									  const uint32_t* voxels_per_side,
+									  const float* volume_zero_pos,
+									  const float* voxel_inc,
+									  float t0,
+									  float deltaT)
 {
 	thrust::device_vector<cuComplex> transient_chunk_gpu((cuComplex*) transient_chunk, (cuComplex*) transient_chunk + transient_size);
 	thrust::device_vector<uint32_t> T_gpu(&T, &T + 1);
@@ -755,7 +755,6 @@ void call_cuda_complex_backprojection(const std::complex<float>* transient_chunk
 	#endif
 	for (uint32_t r = 0; r < number_of_runs; r++)
 	{
-		auto start = std::chrono::steady_clock::now();
 		cuda_backprojection_impl<<<xyz_blocks, threads_in_block, blockSize*sizeof(cuComplex)>>>(
 			thrust::raw_pointer_cast(&transient_chunk_gpu[0]),
 			thrust::raw_pointer_cast(&T_gpu[0]),
